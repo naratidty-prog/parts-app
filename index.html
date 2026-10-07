@@ -75,9 +75,10 @@
         <div class="bahttext muted" id="sale-bahttext"></div>
         <div class="tot-grid">
           <span>รวม</span><b id="sale-total">0.00</b>
-          <span>ส่วนลด</span><input id="sale-discount" type="number" step="0.01" min="0" value="0">
+          <span>ส่วนลด</span><span class="disc-pair"><input id="sale-discount" type="number" step="0.01" min="0" value="0" title="ส่วนลดเป็นบาท"><input id="sale-discount-pct" type="number" step="0.01" min="0" max="100" value="0" title="ส่วนลดเป็น %"><b>%</b></span>
           <span>เป็นเงิน</span><b id="sale-net" class="big">0.00</b>
         </div>
+        <p class="small muted" id="sale-disc-hint"></p>
       </div>
       <div class="actions">
         <button id="btn-clear" class="ghost">ล้างหน้าจอ</button>
@@ -137,6 +138,7 @@
       <button data-sub="audit" class="active">ประวัติแก้ไข/ลบ/คืน</button>
       <button data-sub="parts">ข้อมูลอะไหล่</button>
       <button data-sub="users">ผู้ใช้</button>
+      <button data-sub="discounts">ส่วนลด</button>
     </nav>
     <div id="sub-audit" class="sub">
       <div class="card row"><button id="btn-audit-load" class="primary">โหลดประวัติล่าสุด</button></div>
@@ -153,8 +155,14 @@
         <label>ทุนไม่รวมภาษี<input name="cost" type="number" step="0.01"></label>
         <label>ราคาขายไม่รวมภาษี<input name="price_ex" type="number" step="0.01"></label>
         <label>ราคาขายรวมภาษี<input name="price" type="number" step="0.01" required></label>
+        <label>ลดได้สูงสุด (%)<input name="max_disc" type="number" step="0.01" min="0" max="100" placeholder="เว้นว่าง = ตามสาขา"></label>
         <div class="actions"><button class="primary" type="submit">บันทึกอะไหล่</button></div>
       </form>
+      <div class="card" id="pending-parts-card">
+        <h3>อะไหล่ที่พนักงานเพิ่มด่วน (รอตรวจ)</h3>
+        <p class="small muted">ตรวจชื่อและราคา แล้วกด ยืนยัน ถ้าต้องแก้ให้กด แก้ไข ข้อมูลจะขึ้นในฟอร์มด้านบน ระหว่างรอตรวจ อะไหล่ตัวนี้ลดราคาไม่ได้</p>
+        <table class="grid small"><thead><tr><th>รหัส</th><th>ชื่ออะไหล่</th><th>รุ่น</th><th class="num">ราคา</th><th>ผู้เพิ่ม</th><th></th></tr></thead><tbody id="pending-parts-body"></tbody></table>
+      </div>
       <div class="card">
         <h3>นำเข้าจาก Excel</h3>
         <p class="small muted">หัวคอลัมน์: รหัสอะไหล่, ชื่ออะไหล่, รุ่น, ทุนไม่รวมภาษี, ราคาขายไม่รวมภาษี, ราคาขายรวมภาษี (รหัสที่มีอยู่แล้วจะถูกอัปเดตราคา)</p>
@@ -177,6 +185,20 @@
       <div class="card"><table class="grid small" id="users-table">
         <thead><tr><th>ชื่อผู้ใช้</th><th>ชื่อ</th><th>สิทธิ์</th><th>สาขา</th><th>สถานะ</th><th></th></tr></thead><tbody></tbody>
       </table></div>
+    </div>
+    <div id="sub-discounts" class="sub hidden">
+      <form class="card" id="branch-disc-form">
+        <h3>ส่วนลดของแต่ละสาขา</h3>
+        <p class="small muted">พนักงานพิมพ์ส่วนลดเองได้ไม่เกิน % ของสาขาตัวเอง ถ้าเกินต้องใส่รหัสอนุมัติของแอดมิน</p>
+        <table class="grid small"><thead><tr><th>สาขา</th><th class="num">ลดได้สูงสุด (%)</th></tr></thead><tbody id="branch-disc-body"></tbody></table>
+        <div class="actions"><button class="primary" type="submit">บันทึก</button></div>
+        <p id="branch-disc-msg"></p>
+      </form>
+      <div class="card">
+        <h3>อะไหล่ที่ลดไม่เหมือนปกติ</h3>
+        <p class="small muted">ตั้งได้ที่แท็บ ข้อมูลอะไหล่ ช่อง "ลดได้สูงสุด (%)" ใส่ 0 = ลดไม่ได้ เว้นว่าง = ลดตามสาขา</p>
+        <table class="grid small"><thead><tr><th>รหัส</th><th>ชื่ออะไหล่</th><th class="num">ราคา</th><th class="num">ลดได้สูงสุด</th><th></th></tr></thead><tbody id="special-parts-body"></tbody></table>
+      </div>
     </div>
   </main>
 </section>

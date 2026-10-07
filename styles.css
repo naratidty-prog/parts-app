@@ -112,3 +112,15 @@ tr.ret td { color: var(--bad); }
   .tab { padding: 0 8px 20px; }
   .tot-grid { grid-template-columns: auto 120px; }
 }
+
+/* ส่วนลด: ช่องบาท + ช่อง % */
+.disc-pair { display: flex; gap: 4px; align-items: center; justify-content: flex-end; }
+.disc-pair #sale-discount { width: 110px; }
+.disc-pair #sale-discount-pct { width: 64px; }
+.tot-grid { grid-template-columns: auto 200px; }
+#sale-disc-hint { text-align: right; margin: 6px 0 0; }
+@media (max-width: 700px) {
+  .tot-grid { grid-template-columns: auto 180px; }
+  .disc-pair #sale-discount { width: 92px; }
+  .disc-pair #sale-discount-pct { width: 56px; }
+}

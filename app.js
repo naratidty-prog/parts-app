@@ -266,7 +266,22 @@ async function loadPartsFromDb() {
   S.partsList = rows;
 }
 
-function partFromRow(r) { return { k: codeKey(r[0]), code: r[0], name: r[1], model: r[2], price: r[3], cost: r[4], u: r[5] }; }
+function partFromRow(r) {
+  return { k: codeKey(r[0]), code: r[0], name: r[1], model: r[2], price: r[3], cost: r[4], u: r[5],
+    maxDisc: r[6] == null ? '' : r[6], status: r[7] || '', addedBy: r[8] || '' };
+}
+const PART_PENDING = 'รอตรวจ';
+
+/* ---------------------------------------------------------------- ส่วนลด */
+// % ส่วนลดของสาขาที่กำลังขาย (แอดมินตั้งในแท็บ แอดมิน > ส่วนลด)
+function branchPct(code = S.branch) { const b = S.branches.find((x) => x.code === code); return num(b && b.discount_pct); }
+// เพดานส่วนลดของอะไหล่แต่ละตัว: ตามสาขา หรือต่ำกว่าถ้าแอดมินตั้งไว้, อะไหล่รอตรวจลดไม่ได้
+function partCap(code, pct = branchPct()) {
+  const p = findPart(code);
+  if (!p || p.status === PART_PENDING) return 0;
+  return p.maxDisc === '' || p.maxDisc == null ? pct : Math.min(pct, num(p.maxDisc));
+}
+function allowedDiscount(lines) { return round2(lines.reduce((s, l) => s + num(l.qty) * num(l.unit) * partCap(l.code) / 100, 0)); }
 
 async function syncParts() {
   const since = await DB.kv.get('partsSince');
@@ -518,11 +533,11 @@ async function markSynced(op, ok, error) {
 function showQueue() {
   DB.all('queue').then((q) => {
     q.sort((a, b) => a.seq - b.seq);
-    const label = { createBill: 'บิลขาย', editBill: 'แก้ไขบิล', voidBill: 'ยกเลิกบิล', returnBill: 'บิลคืน', saveCustomer: 'ลูกค้า' };
+    const label = { createBill: 'บิลขาย', editBill: 'แก้ไขบิล', voidBill: 'ยกเลิกบิล', returnBill: 'บิลคืน', saveCustomer: 'ลูกค้า', addPart: 'อะไหล่ด่วน' };
     const box = openModal(`<h2>ข้อมูลที่ยังไม่ได้ส่งขึ้นระบบ</h2>
       <p class="muted">${S.online ? 'ออนไลน์' : 'ออฟไลน์อยู่ ระบบจะส่งให้อัตโนมัติเมื่อมีอินเทอร์เน็ต'}</p>
       ${q.length ? `<table class="grid small"><thead><tr><th>รายการ</th><th>บิล/ลูกค้า</th><th>สถานะ</th><th></th></tr></thead><tbody>
-      ${q.map((o) => `<tr><td>${label[o.type] || o.type}</td><td>${esc(o.bill ? o.bill.bill_no : o.bill_no || (o.customer && o.customer.display))}</td>
+      ${q.map((o) => `<tr><td>${label[o.type] || o.type}</td><td>${esc(o.bill ? o.bill.bill_no : o.bill_no || (o.customer && o.customer.display) || (o.part && o.part.code))}</td>
         <td>${o.state === 'error' ? `<span class="badge error">ไม่สำเร็จ</span> ${esc(o.error)}` : '<span class="badge pending">รอส่ง</span>'}</td>
         <td>${o.state === 'error' ? `<button data-retry="${esc(o.op_id)}">ลองใหม่</button>` : ''}
             ${o.state === 'error' && isAdmin() ? `<button class="danger" data-drop="${esc(o.op_id)}">ทิ้ง</button>` : ''}</td></tr>`).join('')}
@@ -575,6 +590,7 @@ async function newSale() {
   $('#sale-date').disabled = !isAdmin();
   $('#sale-customer').value = (customerByName('เงินสด') && customerLabel(customerByName('เงินสด'))) || 'เงินสด';
   $('#sale-discount').value = 0;
+  $('#sale-discount-pct').value = 0;
   $('#scan-msg').textContent = '';
   renderCart();
   await ensureNumbers(S.branch);
@@ -589,17 +605,34 @@ function addToCart(p, qty = 1) {
   renderCart();
 }
 
+function partBadge(code) {
+  const p = findPart(code);
+  if (!p) return '';
+  if (p.status === PART_PENDING) return ' <span class="badge pending" title="พนักงานเพิ่มด่วน ลดราคาไม่ได้จนกว่าแอดมินตรวจ">รอตรวจ</span>';
+  if (p.maxDisc !== '' && p.maxDisc != null && num(p.maxDisc) < branchPct()) return ` <span class="badge" title="อะไหล่ตัวนี้ลดได้น้อยกว่าปกติ">${num(p.maxDisc) ? 'ลดได้ ' + num(p.maxDisc) + '%' : 'ลดไม่ได้'}</span>`;
+  return '';
+}
+
 function renderCart() {
   const tb = $('#sale-table tbody');
   tb.innerHTML = S.cart.lines.map((l, i) => `<tr>
-    <td>${i + 1}</td><td>${esc(l.code)}</td><td>${esc(l.name)}</td><td>${esc(l.model)}</td>
+    <td>${i + 1}</td><td>${esc(l.code)}</td><td>${esc(l.name)}${partBadge(l.code)}</td><td>${esc(l.model)}</td>
     <td class="num"><input type="number" min="1" step="1" data-i="${i}" data-f="qty" value="${l.qty}"></td>
     <td class="num"><input type="number" min="0" step="0.01" data-i="${i}" data-f="unit" value="${l.unit}" class="${l.unit !== l.listPrice ? 'changed' : ''}" title="ราคาตามฐานข้อมูล ${money(l.listPrice)}"></td>
     <td class="num">${money(l.qty * l.unit)}</td>
     <td><button class="ghost" data-del="${i}" title="ลบรายการนี้">✕</button></td></tr>`).join('') ||
     '<tr><td colspan="8" class="muted">ยังไม่มีรายการ ยิงบาร์โค้ดได้เลย</td></tr>';
   const total = round2(S.cart.lines.reduce((s, l) => s + num(l.qty) * num(l.unit), 0));
+  // ช่อง % กับช่องบาทผูกกัน: แก้ช่องไหน อีกช่องคำนวณตาม
+  if (S.cart.discBy === 'pct') $('#sale-discount').value = round2(total * num($('#sale-discount-pct').value) / 100);
   const disc = num($('#sale-discount').value);
+  if (S.cart.discBy !== 'pct') $('#sale-discount-pct').value = total ? round2(disc / total * 100) : 0;
+  const allowed = allowedDiscount(S.cart.lines), pct = branchPct();
+  const odd = S.cart.lines.filter((l) => partCap(l.code, pct) < pct).length;
+  $('#sale-disc-hint').innerHTML = `ลดไปแล้ว <b>${total ? round2(disc / total * 100) : 0}%</b> · สาขานี้ลดได้ ${pct}%`
+    + (total ? ` · บิลนี้ลดได้สูงสุด <b>${money(allowed)}</b> บาท` : '')
+    + (odd ? ` (มีอะไหล่ ${odd} รายการที่ลดได้น้อยกว่าปกติ)` : '')
+    + (disc > allowed + 0.001 ? ' <span class="err">เกิน ต้องให้แอดมินอนุมัติ</span>' : '');
   $('#sale-total').textContent = money(total);
   $('#sale-net').textContent = money(total - disc);
   $('#sale-bahttext').textContent = S.cart.lines.length ? '(' + bahtText(total - disc) + ')' : '';
@@ -615,7 +648,7 @@ function scan(code) {
   $('#scan-msg').textContent = '';
   if (p) { addToCart(p, qty); return; }
   if (!S.partsList.length) { $('#scan-msg').textContent = 'ยังไม่มีข้อมูลอะไหล่ในเครื่อง ต่ออินเทอร์เน็ตเพื่อโหลดก่อน'; return; }
-  $('#scan-msg').textContent = `ไม่พบรหัส "${code}"`;
+  $("#scan-msg").textContent = `ไม่พบรหัส "${code}" ค้นหาจากชื่อ หรือกด เพิ่มอะไหล่ด่วน`;
   openPartSearch(code, (pp) => addToCart(pp, qty));
 }
 
@@ -623,8 +656,9 @@ function openPartSearch(q, onPick) {
   const box = openModal(`<h2>ค้นหาอะไหล่</h2>
     <input id="ps-q" placeholder="พิมพ์ชื่อ รุ่น หรือรหัสบางส่วน" style="width:100%" value="${esc(q || '')}" autofocus>
     <div class="search-results"><table class="grid small"><thead><tr><th>รหัส</th><th>ชื่ออะไหล่</th><th>รุ่น</th><th class="num">ราคา</th></tr></thead><tbody id="ps-body"></tbody></table></div>
-    <div class="actions"><button data-close>ปิด</button></div>`);
+    <div class="actions"><button type="button" id="ps-add" title="รหัสไม่มีในระบบ ลูกค้ารอ">➕ เพิ่มอะไหล่ด่วน</button><button data-close>ปิด</button></div>`);
   let found = [];
+  $('#ps-add', box).onclick = () => { const v = $('#ps-q', box).value.trim(); closeModal(); quickAddPart(/\s/.test(v) ? '' : v, v, onPick); };
   const run = () => {
     found = searchParts($('#ps-q', box).value);
     $('#ps-body', box).innerHTML = found.map((p, i) => `<tr class="clickable" data-pick="${i}"><td>${esc(p.code)}</td><td>${esc(p.name)}</td><td>${esc(p.model)}</td><td class="num">${money(p.price)}</td></tr>`).join('')
@@ -639,6 +673,36 @@ function openPartSearch(q, onPick) {
   run();
 }
 
+// พนักงานเพิ่มอะไหล่เองกรณีฉุกเฉิน: ใช้ได้ทันที (แม้ออฟไลน์) ติดสถานะรอแอดมินตรวจ และลดราคาไม่ได้
+function quickAddPart(code, name, onAdded) {
+  const box = openModal(`<h2>เพิ่มอะไหล่ด่วน</h2>
+    <p class="small muted">ใช้เมื่อรหัสยังไม่มีในระบบและต้องรีบออกบิล อะไหล่จะขึ้นว่า "รอตรวจ" จนกว่าแอดมินยืนยัน และระหว่างนั้นลดราคาไม่ได้</p>
+    <form class="form-grid" id="qa-form">
+      <label>รหัสอะไหล่ *<input name="code" required value="${esc(code)}"></label>
+      <label>ชื่ออะไหล่ *<input name="name" required value="${esc(code ? '' : name)}"></label>
+      <label>รุ่น<input name="model"></label>
+      <label>ราคาขาย (รวมภาษี) *<input name="price" type="number" step="0.01" min="0.01" required></label>
+      <div class="actions"><button type="button" data-close>ยกเลิก</button><button class="primary" type="submit">เพิ่มและใส่ในบิล</button></div>
+    </form>`);
+  $(code ? '[name=name]' : '[name=code]', box).focus();
+  $('#qa-form', box).onsubmit = async (ev) => {
+    ev.preventDefault();
+    const f = Object.fromEntries(new FormData(ev.target));
+    f.code = f.code.trim(); f.name = f.name.trim();
+    if (findPart(f.code)) { closeModal(); toast('รหัสนี้มีอยู่แล้วในระบบ'); onAdded(findPart(f.code)); return; }
+    if (!(num(f.price) > 0)) return toast('ใส่ราคาขาย');
+    const p = { k: codeKey(f.code), code: f.code, name: f.name, model: f.model.trim(), price: num(f.price), cost: '', u: '',
+      maxDisc: 0, status: PART_PENDING, addedBy: S.user.name };
+    await DB.put('parts', p);
+    S.parts.set(p.k, p); S.partsList.push(p);
+    const n = normCode(p.code); if (n && !S.partsNorm.has(n)) S.partsNorm.set(n, p);
+    await enqueue({ type: 'addPart', part: { code: p.code, name: p.name, model: p.model, price: p.price } });
+    closeModal();
+    toast('เพิ่มอะไหล่ ' + p.code + ' แล้ว (รอแอดมินตรวจ)');
+    onAdded(p);
+  };
+}
+
 async function saveSale(print) {
   const lines = S.cart.lines.filter((l) => num(l.qty) > 0);
   if (!lines.length) return toast('ยังไม่มีรายการอะไหล่');
@@ -648,12 +712,13 @@ async function saveSale(print) {
   const total = round2(lines.reduce((s, l) => s + num(l.qty) * num(l.unit), 0));
   const discount = round2(num($('#sale-discount').value));
   if (discount > total) return toast('ส่วนลดมากกว่ายอดรวม');
-  const limit = num(S.settings.discount_limit_pct);
+  const allowed = allowedDiscount(lines);
   const priceChanged = lines.some((l) => Math.abs(l.unit - l.listPrice) > 0.001);
-  const needAp = priceChanged || discount > total * limit / 100 + 0.001;
+  const overDisc = discount > allowed + 0.001;
+  const needAp = priceChanged || overDisc;
   let ap = null;
   if (needAp) {
-    const why = [priceChanged ? 'มีการแก้ราคาขาย' : '', discount > total * limit / 100 ? `ส่วนลดเกิน ${limit}%` : ''].filter(Boolean).join(' และ ');
+    const why = [priceChanged ? 'มีการแก้ราคาขาย' : '', overDisc ? `ส่วนลด ${money(discount)} บาท เกินที่ลดได้ ${money(allowed)} บาท` : ''].filter(Boolean).join(' และ ');
     ap = await askApproval('ต้องให้แอดมินอนุมัติ', esc(why), false);
     if (!ap) return;
   }
@@ -966,6 +1031,64 @@ async function loadAudit() {
   } catch (e) { toast(e.message); }
 }
 
+function loadDiscountAdmin() {
+  $('#branch-disc-body').innerHTML = S.branches.map((b) => `<tr><td>${esc(b.name)}</td>
+    <td class="num"><input type="number" step="0.01" min="0" max="100" name="${esc(b.code)}" value="${num(b.discount_pct)}" style="width:90px"></td></tr>`).join('');
+  $('#branch-disc-msg').textContent = '';
+  const odd = S.partsList.filter((p) => p.maxDisc !== '' && p.maxDisc != null).sort((a, b) => a.code < b.code ? -1 : 1);
+  $('#special-parts-body').innerHTML = odd.map((p) => `<tr><td>${esc(p.code)}</td><td>${esc(p.name)}</td><td class="num">${money(p.price)}</td>
+    <td class="num">${num(p.maxDisc) ? num(p.maxDisc) + '%' : 'ลดไม่ได้'}</td><td><button type="button" data-edit-part="${esc(p.code)}">แก้ไข</button></td></tr>`).join('')
+    || '<tr><td colspan="5" class="muted">ยังไม่มี อะไหล่ทุกตัวลดตาม % ของสาขา</td></tr>';
+}
+
+async function saveBranchDiscounts(ev) {
+  ev.preventDefault();
+  const discounts = {};
+  for (const inp of $$('#branch-disc-body input')) {
+    const v = num(inp.value);
+    if (inp.value === '' || v < 0 || v > 100) return toast('ส่วนลดต้องเป็น 0 ถึง 100%');
+    discounts[inp.name] = v;
+  }
+  try {
+    const r = await api('saveBranchDiscounts', { discounts });
+    S.branches = r.branches;
+    const sess = await DB.kv.get('session');
+    if (sess) { sess.branches = r.branches; await DB.kv.set('session', sess); }
+    $('#branch-disc-msg').textContent = 'บันทึกแล้ว เครื่องอื่นจะได้ค่าใหม่ตอนเปิดแอปครั้งถัดไป';
+    loadDiscountAdmin(); $('#branch-disc-msg').textContent = 'บันทึกแล้ว เครื่องอื่นจะได้ค่าใหม่ตอนเปิดแอปครั้งถัดไป';
+    renderCart();
+  } catch (e) { toast(e instanceof NetError ? 'ต้องต่ออินเทอร์เน็ตก่อนจึงจะแก้ส่วนลดได้' : e.message, 6000); }
+}
+
+function renderPendingParts() {
+  const rows = S.partsList.filter((p) => p.status === PART_PENDING);
+  $('#pending-parts-card').classList.toggle('hidden', !rows.length);
+  $('#pending-parts-body').innerHTML = rows.map((p) => `<tr><td>${esc(p.code)}</td><td>${esc(p.name)}</td><td>${esc(p.model)}</td>
+    <td class="num">${money(p.price)}</td><td>${esc(p.addedBy)}</td>
+    <td><button type="button" class="primary" data-approve="${esc(p.code)}">ยืนยัน</button> <button type="button" data-fix="${esc(p.code)}">แก้ไข</button></td></tr>`).join('');
+}
+
+async function onPendingPartClick(e) {
+  const code = e.target.dataset.approve || e.target.dataset.fix;
+  const p = code && findPart(code);
+  if (!p) return;
+  if (e.target.dataset.fix) { fillPartForm(p); return; }
+  try {
+    await api('saveParts', { parts: [{ code: p.code, name: p.name, model: p.model, cost: p.cost, price_ex: '', price: p.price, max_disc: '', approve: true }] });
+    toast('ยืนยันอะไหล่ ' + p.code + ' แล้ว');
+    await syncParts(); renderPendingParts();
+  } catch (err) { toast(err instanceof NetError ? 'ต้องต่ออินเทอร์เน็ตก่อน' : err.message); }
+}
+
+function fillPartForm(p) {
+  if (!p) return;
+  const f = $('#part-form');
+  f.code.value = p.code; f.name.value = p.name; f.model.value = p.model; f.price.value = p.price;
+  f.cost.value = p.cost === '' || p.cost == null ? '' : p.cost;
+  f.max_disc.value = p.maxDisc === '' || p.maxDisc == null ? '' : p.maxDisc;
+  f.scrollIntoView({ behavior: 'smooth' }); f.name.focus();
+}
+
 async function loadUsers() {
   try {
     const rows = await api('users');
@@ -990,11 +1113,13 @@ async function saveUserForm(ev) {
 async function savePartForm(ev) {
   ev.preventDefault();
   const f = Object.fromEntries(new FormData(ev.target));
+  if (f.max_disc !== '' && (num(f.max_disc) < 0 || num(f.max_disc) > 100)) return toast('ลดได้สูงสุดต้องเป็น 0 ถึง 100%');
+  f.approve = true;   // แอดมินบันทึกผ่านฟอร์ม = ตรวจแล้ว
   try {
     const r = await api('saveParts', { parts: [f] });
     toast(r.added ? 'เพิ่มอะไหล่แล้ว' : 'แก้ไขอะไหล่แล้ว');
     ev.target.reset();
-    await syncParts();
+    await syncParts(); renderPendingParts();
   } catch (e) { toast(e.message); }
 }
 
@@ -1076,6 +1201,8 @@ function bindStatic() {
     $$('.subtabs button').forEach((x) => x.classList.toggle('active', x === b));
     $$('.sub').forEach((s) => s.classList.toggle('hidden', s.id !== 'sub-' + b.dataset.sub));
     if (b.dataset.sub === 'users') loadUsers();
+    if (b.dataset.sub === 'discounts') loadDiscountAdmin();
+    if (b.dataset.sub === 'parts') renderPendingParts();
     if (b.dataset.sub === 'audit') loadAudit();
   });
 
@@ -1089,7 +1216,8 @@ function bindStatic() {
     setTimeout(renderCart);   // รอให้ช่องที่กำลังแก้หลุดโฟกัสก่อนวาดตารางใหม่
   };
   $('#sale-table').onclick = (e) => { const d = e.target.dataset.del; if (d != null) { S.cart.lines.splice(num(d), 1); renderCart(); } };
-  $('#sale-discount').oninput = renderCart;
+  $('#sale-discount').oninput = () => { S.cart.discBy = 'baht'; renderCart(); };
+  $('#sale-discount-pct').oninput = () => { S.cart.discBy = 'pct'; renderCart(); };
   $('#sale-customer').onchange = (e) => { const c = customerByName(e.target.value); if (c) e.target.value = customerLabel(c); };
   $('#sale-customer').onfocus = (e) => e.target.select();
   $('#btn-clear').onclick = () => { if (!S.cart.lines.length || confirm('ล้างรายการบนหน้าจอ?')) newSale(); };
@@ -1128,6 +1256,12 @@ function bindStatic() {
   $('#btn-audit-load').onclick = loadAudit;
   $('#audit-table').onclick = (e) => { const tr = e.target.closest('[data-bill]'); if (tr) openBill(tr.dataset.bill); };
   $('#user-form').onsubmit = saveUserForm;
+  $('#branch-disc-form').onsubmit = saveBranchDiscounts;
+  $('#pending-parts-body').onclick = onPendingPartClick;
+  $('#special-parts-body').onclick = (e) => {
+    const code = e.target.dataset.editPart; if (!code) return;
+    $$('.subtabs button').find((b) => b.dataset.sub === 'parts').click(); fillPartForm(findPart(code));
+  };
   $('#users-table').onclick = (e) => {
     const i = e.target.dataset.user; if (i == null) return;
     const u = S._users[i], f = $('#user-form');
@@ -1135,10 +1269,7 @@ function bindStatic() {
     f.pin.value = ''; f.approve.value = ''; f.username.focus();
   };
   $('#part-form').onsubmit = savePartForm;
-  $('#part-form').code.onchange = (e) => {
-    const p = findPart(e.target.value); if (!p) return;
-    const f = $('#part-form'); f.name.value = p.name; f.model.value = p.model; f.price.value = p.price; if (p.cost !== '') f.cost.value = p.cost;
-  };
+  $('#part-form').code.onchange = (e) => fillPartForm(findPart(e.target.value));
   $('#parts-file').onchange = (e) => { if (e.target.files[0]) importPartsFile(e.target.files[0]); e.target.value = ''; };
 }
 
