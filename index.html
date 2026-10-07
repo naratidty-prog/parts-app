@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>บันทึกขายอะไหล่</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<meta name="theme-color" content="#1f4e79">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<!-- ตั้งค่าที่อยู่ระบบหลังบ้าน (ครั้งแรกครั้งเดียว) -->
+<section id="scr-setup" class="screen center hidden">
+  <div class="card narrow">
+    <h1>ตั้งค่าครั้งแรก</h1>
+    <p>วางลิงก์ Web app ที่ได้จาก Apps Script (ลงท้ายด้วย <code>/exec</code>)</p>
+    <input id="setup-url" placeholder="https://script.google.com/macros/s/.../exec">
+    <button class="primary" id="setup-save">บันทึก</button>
+    <p class="err" id="setup-err"></p>
+  </div>
+</section>
+
+<!-- เข้าสู่ระบบ -->
+<section id="scr-login" class="screen center hidden">
+  <form class="card narrow" id="login-form" autocomplete="off">
+    <h1>บันทึกขายอะไหล่</h1>
+    <label>ชื่อผู้ใช้<input id="login-user" autocapitalize="off" required></label>
+    <label>รหัส<input id="login-pin" type="password" inputmode="numeric" required></label>
+    <button class="primary" type="submit">เข้าสู่ระบบ</button>
+    <p class="err" id="login-err"></p>
+    <p class="muted small" id="login-net"></p>
+    <p class="small"><a href="#" id="login-reset-url">เปลี่ยนลิงก์ระบบหลังบ้าน</a></p>
+  </form>
+</section>
+
+<!-- แอปหลัก -->
+<section id="scr-app" class="screen hidden">
+  <header class="topbar no-print">
+    <div class="brand">อะไหล่ <span id="shop-name" class="muted"></span></div>
+    <label class="branch-pick">สาขา <select id="branch-select"></select></label>
+    <button id="sync-chip" class="chip" title="กดเพื่อส่งข้อมูลตอนนี้"></button>
+    <span id="user-label" class="muted"></span>
+    <button id="btn-logout" class="ghost">ออก</button>
+  </header>
+  <nav class="tabs no-print">
+    <button data-tab="sale" class="active">บันทึกขายอะไหล่</button>
+    <button data-tab="print">พิมพ์ใบเสร็จ</button>
+    <button data-tab="report">รายงานบันทึกขายอะไหล่</button>
+    <button data-tab="customers">ลูกค้า</button>
+    <button data-tab="admin" class="admin-only">แอดมิน</button>
+  </nav>
+  <div id="parts-progress" class="banner hidden no-print"></div>
+
+  <!-- ขาย -->
+  <main id="tab-sale" class="tab no-print">
+    <div class="sale-head card">
+      <div class="field"><span>เลขที่</span><b id="sale-no">-</b></div>
+      <label class="field">วันที่<input type="date" id="sale-date"></label>
+      <label class="field grow">ลูกค้า<input id="sale-customer" list="customer-list" placeholder="พิมพ์ชื่อหรือเลือก" value="เงินสด"></label>
+      <datalist id="customer-list"></datalist>
+    </div>
+    <div class="scan card">
+      <input id="scan-input" placeholder="ยิงบาร์โค้ด หรือพิมพ์รหัสอะไหล่ แล้วกด Enter" autocomplete="off">
+      <button id="btn-search-part">ค้นหาชื่อ (F2)</button>
+    </div>
+    <p class="err" id="scan-msg"></p>
+    <div class="card">
+      <table class="grid" id="sale-table">
+        <thead><tr><th>#</th><th>รหัสอะไหล่</th><th>ชื่ออะไหล่</th><th>รุ่น</th><th class="num">จำนวน</th><th class="num">หน่วยละ</th><th class="num">จำนวนเงิน</th><th></th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <div class="totals">
+        <div class="bahttext muted" id="sale-bahttext"></div>
+        <div class="tot-grid">
+          <span>รวม</span><b id="sale-total">0.00</b>
+          <span>ส่วนลด</span><input id="sale-discount" type="number" step="0.01" min="0" value="0">
+          <span>เป็นเงิน</span><b id="sale-net" class="big">0.00</b>
+        </div>
+      </div>
+      <div class="actions">
+        <button id="btn-clear" class="ghost">ล้างหน้าจอ</button>
+        <button id="btn-save" class="">บันทึก</button>
+        <button id="btn-save-print" class="primary">บันทึกและพิมพ์ (F9)</button>
+      </div>
+    </div>
+  </main>
+
+  <!-- พิมพ์ใบเสร็จ -->
+  <main id="tab-print" class="tab hidden no-print">
+    <div class="card row">
+      <input id="print-no" placeholder="เลขที่บิล เช่น A6900001">
+      <button id="btn-print-load">เปิดบิล</button>
+      <button id="btn-print-go" class="primary">พิมพ์</button>
+    </div>
+    <p class="err" id="print-msg"></p>
+    <div id="print-preview" class="preview"></div>
+  </main>
+
+  <!-- รายงาน -->
+  <main id="tab-report" class="tab hidden no-print">
+    <div class="card row">
+      <label>ตั้งแต่<input type="date" id="rep-from"></label>
+      <label>ถึง<input type="date" id="rep-to"></label>
+      <label class="admin-only">สาขา<select id="rep-branch"></select></label>
+      <button id="btn-rep-load" class="primary">แสดง</button>
+      <button id="btn-rep-excel">ดาวน์โหลด Excel</button>
+    </div>
+    <p class="muted" id="rep-msg"></p>
+    <div class="card" id="rep-summary"></div>
+    <div class="card scroll-x">
+      <table class="grid small" id="rep-table">
+        <thead><tr><th>ใบเสร็จเลขที่</th><th>วันที่</th><th>รหัสอะไหล่</th><th>ชื่ออะไหล่</th><th>รุ่น</th><th class="num">จำนวน</th><th class="num">หน่วยละ</th><th class="num">จำนวนเงิน</th><th>ชื่อผู้ซื้อ</th><th class="num">รวมเงิน</th><th class="num">ส่วนลด</th><th class="num">เหลือ</th><th>สถานะ</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </main>
+
+  <!-- ลูกค้า -->
+  <main id="tab-customers" class="tab hidden no-print">
+    <div class="card row">
+      <input id="cus-search" placeholder="ค้นหาลูกค้า">
+      <button id="btn-cus-new" class="primary">เพิ่มลูกค้า</button>
+    </div>
+    <div class="card scroll-x">
+      <table class="grid small" id="cus-table">
+        <thead><tr><th>ชื่อที่ใช้</th><th>ชื่อ-นามสกุล</th><th>เบอร์โทร</th><th>ที่อยู่</th><th></th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </main>
+
+  <!-- แอดมิน -->
+  <main id="tab-admin" class="tab hidden no-print">
+    <nav class="subtabs">
+      <button data-sub="audit" class="active">ประวัติแก้ไข/ลบ/คืน</button>
+      <button data-sub="parts">ข้อมูลอะไหล่</button>
+      <button data-sub="users">ผู้ใช้</button>
+    </nav>
+    <div id="sub-audit" class="sub">
+      <div class="card row"><button id="btn-audit-load" class="primary">โหลดประวัติล่าสุด</button></div>
+      <div class="card scroll-x"><table class="grid small" id="audit-table">
+        <thead><tr><th>เวลา</th><th>ผู้ทำ</th><th>สาขา</th><th>รายการ</th><th>บิล</th><th>ผู้อนุมัติ</th><th>รายละเอียด</th></tr></thead><tbody></tbody>
+      </table></div>
+    </div>
+    <div id="sub-parts" class="sub hidden">
+      <form class="card form-grid" id="part-form">
+        <h3>เพิ่ม / แก้ไขอะไหล่ทีละรายการ</h3>
+        <label>รหัสอะไหล่<input name="code" required></label>
+        <label>ชื่ออะไหล่<input name="name" required></label>
+        <label>รุ่น<input name="model"></label>
+        <label>ทุนไม่รวมภาษี<input name="cost" type="number" step="0.01"></label>
+        <label>ราคาขายไม่รวมภาษี<input name="price_ex" type="number" step="0.01"></label>
+        <label>ราคาขายรวมภาษี<input name="price" type="number" step="0.01" required></label>
+        <div class="actions"><button class="primary" type="submit">บันทึกอะไหล่</button></div>
+      </form>
+      <div class="card">
+        <h3>นำเข้าจาก Excel</h3>
+        <p class="small muted">หัวคอลัมน์: รหัสอะไหล่, ชื่ออะไหล่, รุ่น, ทุนไม่รวมภาษี, ราคาขายไม่รวมภาษี, ราคาขายรวมภาษี (รหัสที่มีอยู่แล้วจะถูกอัปเดตราคา)</p>
+        <input type="file" id="parts-file" accept=".xlsx,.xls,.xlsm,.csv">
+        <p id="parts-import-msg"></p>
+      </div>
+    </div>
+    <div id="sub-users" class="sub hidden">
+      <form class="card form-grid" id="user-form" autocomplete="off">
+        <h3>เพิ่ม / แก้ไขผู้ใช้</h3>
+        <label>ชื่อผู้ใช้<input name="username" required autocapitalize="off"></label>
+        <label>ชื่อที่แสดง<input name="name" required></label>
+        <label>สิทธิ์<select name="role"><option value="staff">พนักงาน</option><option value="admin">แอดมิน</option></select></label>
+        <label>สาขา<select name="branch" id="user-branch"></select></label>
+        <label>รหัสเข้าระบบ<input name="pin" type="password" placeholder="เว้นว่างถ้าไม่เปลี่ยน"></label>
+        <label>รหัสอนุมัติ (แอดมิน)<input name="approve" type="password" placeholder="เว้นว่างถ้าไม่เปลี่ยน"></label>
+        <label class="check"><input name="active" type="checkbox" checked> ใช้งานอยู่</label>
+        <div class="actions"><button class="primary" type="submit">บันทึกผู้ใช้</button></div>
+      </form>
+      <div class="card"><table class="grid small" id="users-table">
+        <thead><tr><th>ชื่อผู้ใช้</th><th>ชื่อ</th><th>สิทธิ์</th><th>สาขา</th><th>สถานะ</th><th></th></tr></thead><tbody></tbody>
+      </table></div>
+    </div>
+  </main>
+</section>
+
+<!-- หน้าต่างลอย -->
+<div id="modal" class="modal hidden no-print"><div class="modal-box" id="modal-box"></div></div>
+
+<!-- พื้นที่พิมพ์ -->
+<div id="print-area" class="print-only"></div>
+
+<script src="config.js"></script>
+<script src="vendor/xlsx.full.min.js" defer></script>
+<script src="app.js"></script>
+</body>
+</html>
