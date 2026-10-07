@@ -65,14 +65,15 @@ const DB = {
   db: null,
   open() {
     return new Promise((res, rej) => {
-      const r = indexedDB.open('parts-app', 1);
+      const r = indexedDB.open('parts-app', 2);
       r.onupgradeneeded = () => {
-        const d = r.result;
-        d.createObjectStore('kv');
-        d.createObjectStore('parts', { keyPath: 'k' });
-        d.createObjectStore('customers', { keyPath: 'id' });
-        d.createObjectStore('bills', { keyPath: 'bill_no' });
-        d.createObjectStore('queue', { keyPath: 'op_id' });
+        const d = r.result, make = (name, opt) => { if (!d.objectStoreNames.contains(name)) d.createObjectStore(name, opt); };
+        make('kv');
+        make('parts', { keyPath: 'k' });
+        make('customers', { keyPath: 'id' });
+        make('bills', { keyPath: 'bill_no' });
+        make('queue', { keyPath: 'op_id' });
+        make('estimates', { keyPath: 'est_no' });   // v2: ใบประเมินราคา
       };
       r.onsuccess = () => { DB.db = r.result; res(); };
       r.onerror = () => rej(r.error);
@@ -421,39 +422,41 @@ function customerForm(c) {
 /* ================================================================ เลขที่บิล */
 
 // เลขที่จองไว้ต้องขึ้นต้นตามรูปแบบปัจจุบัน (เช่น PA69) ถ้าเปลี่ยนรูปแบบ เลขเก่าในเครื่องจะถูกทิ้ง
-function numberPrefix(branch) {
-  const pre = S.settings && 'bill_prefix' in S.settings ? String(S.settings.bill_prefix).trim().toUpperCase() : 'P';
+// kind 'est' = เลขใบประเมินราคา (Q + ตัวอักษรสาขา) จองแยกจากเลขบิล
+function numberPrefix(branch, kind) {
+  const pre = kind === 'est' ? 'Q' : S.settings && 'bill_prefix' in S.settings ? String(S.settings.bill_prefix).trim().toUpperCase() : 'P';
   return pre + branchInfo(branch).letter;
 }
-async function numberBlocks(branch) {
-  const head = numberPrefix(branch);
-  return ((await DB.kv.get('numbers:' + branch)) || []).filter((b) => b.prefix.indexOf(head) === 0 && /^\d{2}$/.test(b.prefix.slice(head.length)));
+const numbersKey = (branch, kind) => (kind === 'est' ? 'estnums:' : 'numbers:') + branch;
+async function numberBlocks(branch, kind) {
+  const head = numberPrefix(branch, kind);
+  return ((await DB.kv.get(numbersKey(branch, kind))) || []).filter((b) => b.prefix.indexOf(head) === 0 && /^\d{2}$/.test(b.prefix.slice(head.length)));
 }
 function remaining(blocks) { return blocks.reduce((s, b) => s + (b.end - b.next + 1), 0); }
 
-async function ensureNumbers(branch) {
-  const blocks = await numberBlocks(branch);
-  if (remaining(blocks) >= NUMBER_LOW) return;
+async function ensureNumbers(branch, kind) {
+  const blocks = await numberBlocks(branch, kind);
+  if (remaining(blocks) >= (kind === 'est' ? 10 : NUMBER_LOW)) return;
   try {
-    const r = await api('reserve', { branch, count: NUMBER_BLOCK });
+    const r = await api('reserve', { branch, count: kind === 'est' ? 30 : NUMBER_BLOCK, kind });
     blocks.push({ prefix: r.prefix, next: r.start, end: r.end });
-    await DB.kv.set('numbers:' + branch, blocks);
-  } catch (e) { if (!(e instanceof NetError)) toast('จองเลขบิลไม่สำเร็จ: ' + e.message); }
+    await DB.kv.set(numbersKey(branch, kind), blocks);
+  } catch (e) { if (!(e instanceof NetError)) toast('จองเลขที่ไม่สำเร็จ: ' + e.message); }
 }
 
-async function peekNumber(branch) {
-  const b = (await numberBlocks(branch)).find((x) => x.next <= x.end);
+async function peekNumber(branch, kind) {
+  const b = (await numberBlocks(branch, kind)).find((x) => x.next <= x.end);
   return b ? b.prefix + pad(b.next, 5) : null;
 }
 
-async function takeNumber(branch) {
-  let blocks = await numberBlocks(branch);
-  if (!blocks.some((x) => x.next <= x.end)) { await ensureNumbers(branch); blocks = await numberBlocks(branch); }
+async function takeNumber(branch, kind) {
+  let blocks = await numberBlocks(branch, kind);
+  if (!blocks.some((x) => x.next <= x.end)) { await ensureNumbers(branch, kind); blocks = await numberBlocks(branch, kind); }
   const b = blocks.find((x) => x.next <= x.end);
-  if (!b) throw new Error('เลขที่บิลสำรองในเครื่องหมดแล้ว กรุณาต่ออินเทอร์เน็ตสักครู่');
+  if (!b) throw new Error('เลขที่สำรองในเครื่องหมดแล้ว กรุณาต่ออินเทอร์เน็ตสักครู่');
   const no = b.prefix + pad(b.next, 5);
   b.next++;
-  await DB.kv.set('numbers:' + branch, blocks.filter((x) => x.next <= x.end));
+  await DB.kv.set(numbersKey(branch, kind), blocks.filter((x) => x.next <= x.end));
   return no;
 }
 
@@ -488,8 +491,9 @@ function renderSync() {
 }
 
 async function syncNow() {
-  if (S.syncing || !S.token) return;
-  S.syncing = true; renderSync();
+  if (!S.token) return;
+  if (S.syncing) { S.syncAgain = true; return; }   // มีงานใหม่เข้าคิวระหว่างส่ง ส่งต่อทันทีเมื่อรอบนี้จบ
+  S.syncing = true; S.syncAgain = false; renderSync();
   try {
     await ensureNumbers(S.branch);
     const q = (await DB.all('queue')).filter((o) => o.state === 'pending').sort((a, b) => a.seq - b.seq);
@@ -514,6 +518,7 @@ async function syncNow() {
     if (!(e instanceof NetError)) toast('ส่งข้อมูลไม่สำเร็จ: ' + e.message);
   } finally {
     S.syncing = false;
+    if (S.syncAgain && S.online) setTimeout(syncNow, 300);
     await refreshPending();
   }
 }
@@ -524,6 +529,10 @@ async function markSynced(op, ok, error) {
     const b = await DB.get('bills', no);
     if (b) { b._sync = ok ? 'synced' : 'error'; b._error = error || ''; await DB.put('bills', b); }
   }
+  if (op.type === 'saveEstimate') {
+    const e = await DB.get('estimates', op.estimate.est_no);
+    if (e) { e._sync = ok ? 'synced' : 'error'; e._error = error || ''; await DB.put('estimates', e); }
+  }
   if (op.type === 'saveCustomer') {
     const c = await DB.get('customers', op.customer.id);
     if (c && ok) { delete c._pending; await DB.put('customers', c); await loadCustomers(); }
@@ -533,11 +542,11 @@ async function markSynced(op, ok, error) {
 function showQueue() {
   DB.all('queue').then((q) => {
     q.sort((a, b) => a.seq - b.seq);
-    const label = { createBill: 'บิลขาย', editBill: 'แก้ไขบิล', voidBill: 'ยกเลิกบิล', returnBill: 'บิลคืน', saveCustomer: 'ลูกค้า', addPart: 'อะไหล่ด่วน' };
+    const label = { createBill: 'บิลขาย', editBill: 'แก้ไขบิล', voidBill: 'ยกเลิกบิล', returnBill: 'บิลคืน', saveCustomer: 'ลูกค้า', addPart: 'อะไหล่ด่วน', saveEstimate: 'ใบประเมิน' };
     const box = openModal(`<h2>ข้อมูลที่ยังไม่ได้ส่งขึ้นระบบ</h2>
       <p class="muted">${S.online ? 'ออนไลน์' : 'ออฟไลน์อยู่ ระบบจะส่งให้อัตโนมัติเมื่อมีอินเทอร์เน็ต'}</p>
       ${q.length ? `<table class="grid small"><thead><tr><th>รายการ</th><th>บิล/ลูกค้า</th><th>สถานะ</th><th></th></tr></thead><tbody>
-      ${q.map((o) => `<tr><td>${label[o.type] || o.type}</td><td>${esc(o.bill ? o.bill.bill_no : o.bill_no || (o.customer && o.customer.display) || (o.part && o.part.code))}</td>
+      ${q.map((o) => `<tr><td>${label[o.type] || o.type}</td><td>${esc(o.bill ? o.bill.bill_no : o.bill_no || (o.customer && o.customer.display) || (o.part && o.part.code) || (o.estimate && o.estimate.est_no))}</td>
         <td>${o.state === 'error' ? `<span class="badge error">ไม่สำเร็จ</span> ${esc(o.error)}` : '<span class="badge pending">รอส่ง</span>'}</td>
         <td>${o.state === 'error' ? `<button data-retry="${esc(o.op_id)}">ลองใหม่</button>` : ''}
             ${o.state === 'error' && isAdmin() ? `<button class="danger" data-drop="${esc(o.op_id)}">ทิ้ง</button>` : ''}</td></tr>`).join('')}
@@ -591,6 +600,7 @@ async function newSale() {
   $('#sale-customer').value = (customerByName('เงินสด') && customerLabel(customerByName('เงินสด'))) || 'เงินสด';
   $('#sale-discount').value = 0;
   $('#sale-discount-pct').value = 0;
+  $('#sale-order [value=""]').checked = true; $('#sale-paid').value = '';
   $('#scan-msg').textContent = '';
   renderCart();
   await ensureNumbers(S.branch);
@@ -633,6 +643,7 @@ function renderCart() {
     + (total ? ` · บิลนี้ลดได้สูงสุด <b>${money(allowed)}</b> บาท` : '')
     + (odd ? ` (มีอะไหล่ ${odd} รายการที่ลดได้น้อยกว่าปกติ)` : '')
     + (disc > allowed + 0.001 ? ' <span class="err">เกิน ต้องให้แอดมินอนุมัติ</span>' : '');
+  orderPicker($('#sale-order'), 'sale-order', total - disc);
   $('#sale-total').textContent = money(total);
   $('#sale-net').textContent = money(total - disc);
   $('#sale-bahttext').textContent = S.cart.lines.length ? '(' + bahtText(total - disc) + ')' : '';
@@ -652,13 +663,13 @@ function scan(code) {
   openPartSearch(code, (pp) => addToCart(pp, qty));
 }
 
-function openPartSearch(q, onPick) {
+function openPartSearch(q, onPick, opt = {}) {
   const box = openModal(`<h2>ค้นหาอะไหล่</h2>
     <input id="ps-q" placeholder="พิมพ์ชื่อ รุ่น หรือรหัสบางส่วน" style="width:100%" value="${esc(q || '')}" autofocus>
     <div class="search-results"><table class="grid small"><thead><tr><th>รหัส</th><th>ชื่ออะไหล่</th><th>รุ่น</th><th class="num">ราคา</th></tr></thead><tbody id="ps-body"></tbody></table></div>
-    <div class="actions"><button type="button" id="ps-add" title="รหัสไม่มีในระบบ ลูกค้ารอ">➕ เพิ่มอะไหล่ด่วน</button><button data-close>ปิด</button></div>`);
+    <div class="actions">${opt.quickAdd === false ? '' : '<button type="button" id="ps-add" title="รหัสไม่มีในระบบ ลูกค้ารอ">➕ เพิ่มอะไหล่ด่วน</button>'}<button data-close>ปิด</button></div>`);
   let found = [];
-  $('#ps-add', box).onclick = () => { const v = $('#ps-q', box).value.trim(); closeModal(); quickAddPart(/\s/.test(v) ? '' : v, v, onPick); };
+  if ($('#ps-add', box)) $('#ps-add', box).onclick = () => { const v = $('#ps-q', box).value.trim(); closeModal(); quickAddPart(/\s/.test(v) ? '' : v, v, onPick); };
   const run = () => {
     found = searchParts($('#ps-q', box).value);
     $('#ps-body', box).innerHTML = found.map((p, i) => `<tr class="clickable" data-pick="${i}"><td>${esc(p.code)}</td><td>${esc(p.name)}</td><td>${esc(p.model)}</td><td class="num">${money(p.price)}</td></tr>`).join('')
@@ -722,21 +733,44 @@ async function saveSale(print) {
     ap = await askApproval('ต้องให้แอดมินอนุมัติ', esc(why), false);
     if (!ap) return;
   }
+  const order = orderPicker($('#sale-order'), 'sale-order', total - discount);
+  if (order.order_type && num(order.paid) > total - discount + 0.001) return toast('ยอดจ่ายแล้วมากกว่ายอดบิล');
   let no;
   try { no = await takeNumber(S.branch); } catch (e) { return toast(e.message, 6000); }
   const bill = {
     bill_no: no, branch: S.branch, date: $('#sale-date').value || todayISO(), time: nowTime(), type: 'ขาย', ref_bill: '',
     customer_id: cust ? cust.id : '', customer_name: custName, total, discount, net: round2(total - discount), status: 'ปกติ',
-    created_by: S.user.username, created_at: nowISO(), note: '',
+    created_by: S.user.username, created_at: nowISO(), note: '', order_type: order.order_type, paid: order.paid,
     lines: lines.map((l, i) => ({ line: i + 1, code: l.code, name: l.name, model: l.model, qty: num(l.qty), unit: num(l.unit), amount: round2(num(l.qty) * num(l.unit)) }))
   };
   await DB.put('bills', Object.assign({ _sync: 'pending' }, bill));
   await enqueue({ type: 'createBill', bill, approval: ap ? ap.approval : undefined });
+  if (S.cart.fromEst) await markEstimateBilled(S.cart.fromEst, no);
   toast('บันทึกบิล ' + no + ' แล้ว');
   S.printBill = bill;
   renderPrintPreview(bill);
   if (print) printBill(bill);
   newSale();
+}
+
+/* ================================================================ หมายเหตุใบเบิก (สั่งด่วน / สั่งรายสัปดาห์ + จ่ายแล้ว) */
+
+const ORDER_LABEL = { 'สั่งด่วน': 'รายการอะไหล่สั่งด่วน', 'สั่งรายสัปดาห์': 'รายการสั่งรายสัปดาห์' };
+function orderText(b, long = true) {
+  if (!b || !b.order_type) return '';
+  const paid = num(b.paid);
+  return (long ? ORDER_LABEL[b.order_type] || b.order_type : b.order_type) + ' » จ่ายเงินแล้ว ' + money(paid) + ' บาท'
+    + (b.type !== 'คืน' ? ' · ค้างจ่าย ' + money(num(b.net) - paid) : '');
+}
+// ตัวเลือกประเภทการสั่งในหน้าขาย/หน้าแก้ไขบิล: กด "ปกติ" แล้วช่องจ่ายเงินจะปิด
+function orderPicker(scope, name, net) {
+  const type = (scope.querySelector(`[name="${name}"]:checked`) || {}).value || '';
+  const paid = scope.querySelector('.paid input');
+  paid.disabled = !type;
+  if (!type) paid.value = '';
+  const owe = scope.querySelector('.owe, #sale-owe');
+  if (owe) owe.textContent = type && paid.value !== '' ? 'ค้างจ่าย ' + money(net - num(paid.value)) + ' บาท' : '';
+  return { order_type: type, paid: type ? round2(num(paid.value)) : '' };
 }
 
 /* ================================================================ ใบเสร็จ */
@@ -748,10 +782,13 @@ function receiptHtml(bill, copy) {
   const lines = bill.lines || [];
   const rows = Math.max(15, lines.length);
   let body = '';
+  // ช่องหมายเหตุ: แถวแรก "จ่ายเงินวันที่" ตามแบบเดิม ต่อด้วยประเภทการสั่งและยอดที่จ่ายแล้ว
+  const notes = [isRet ? '' : 'จ่ายเงินวันที่'];
+  if (bill.order_type) notes.push(`<b>${esc(bill.order_type)}</b>`, 'จ่ายแล้ว ' + money(bill.paid), 'ค้าง ' + money(num(bill.net) - num(bill.paid)));
   for (let i = 0; i < rows; i++) {
-    const l = lines[i];
-    body += l ? `<tr><td class="num">${l.qty}</td><td>${esc(l.code)}</td><td>${esc(l.name)}</td><td>${esc(l.model)}</td><td class="num">${money(l.unit)}</td><td class="num">${money(l.amount)}</td><td>${i === 0 && !isRet ? 'จ่ายเงินวันที่' : ''}</td></tr>`
-      : '<tr><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>';
+    const l = lines[i], n = notes[i] || '';
+    body += l ? `<tr><td class="num">${l.qty}</td><td>${esc(l.code)}</td><td>${esc(l.name)}</td><td>${esc(l.model)}</td><td class="num">${money(l.unit)}</td><td class="num">${money(l.amount)}</td><td class="r-memo">${n}</td></tr>`
+      : `<tr><td></td><td></td><td></td><td></td><td></td><td></td><td class="r-memo">${n}</td></tr>`;
   }
   const br = branchInfo(bill.branch);
   return `<div class="receipt ${lines.length > 15 ? 'long' : ''}">
@@ -814,6 +851,7 @@ async function openBill(no) {
     <table class="grid small"><thead><tr><th>รหัส</th><th>ชื่อ</th><th>รุ่น</th><th class="num">จำนวน</th><th class="num">หน่วยละ</th><th class="num">จำนวนเงิน</th></tr></thead>
     <tbody>${(b.lines || []).map((l) => `<tr class="${l.status === 'ยกเลิก' ? 'void' : ''}"><td>${esc(l.code)}</td><td>${esc(l.name)}</td><td>${esc(l.model)}</td><td class="num">${l.qty}</td><td class="num">${money(l.unit)}</td><td class="num">${money(l.amount)}</td></tr>`).join('')}</tbody></table>
     <p class="num">รวม ${money(b.total)} · ส่วนลด ${money(b.discount)} · <b>สุทธิ ${money(b.net)}</b></p>
+    ${b.order_type ? `<p><span class="badge pending">${esc(orderText(b))}</span></p>` : ''}
     ${b.returns && b.returns.length ? `<p class="muted">มีบิลคืน: ${b.returns.map(esc).join(', ')}</p>` : ''}
     <div class="actions">
       <button data-close>ปิด</button>
@@ -838,6 +876,9 @@ function editBill(b) {
     <input id="ed-scan" placeholder="ยิงบาร์โค้ดเพื่อเพิ่มรายการ"></div>
     <table class="grid small" style="margin-top:8px"><thead><tr><th>รหัส</th><th>ชื่อ</th><th class="num">จำนวน</th><th class="num">หน่วยละ</th><th class="num">จำนวนเงิน</th><th></th></tr></thead><tbody id="ed-body"></tbody></table>
     <div class="row" style="justify-content:flex-end;margin-top:8px"><label>ส่วนลด<input id="ed-disc" type="number" step="0.01" value="${b.discount}"></label><b id="ed-net"></b></div>
+    ${b.type === 'คืน' ? '' : `<div class="order-opts" id="ed-order"><span>หมายเหตุ</span>
+      ${['', 'สั่งด่วน', 'สั่งรายสัปดาห์'].map((v) => `<label><input type="radio" name="ed-order" value="${v}" ${(b.order_type || '') === v ? 'checked' : ''}> ${v ? ORDER_LABEL[v] : 'ปกติ'}</label>`).join('')}
+      <label class="paid">จ่ายเงินแล้ว<input type="number" step="0.01" min="0" value="${b.order_type && b.paid !== '' ? num(b.paid) : ''}"> บาท</label><span class="muted small owe"></span></div>`}
     <div class="actions"><button data-close>ยกเลิก</button><button class="primary" id="ed-save">บันทึกการแก้ไข (ต้องมีรหัสแอดมิน)</button></div>`);
   const render = () => {
     $('#ed-body', box).innerHTML = lines.map((l, i) => `<tr><td>${esc(l.code)}</td><td>${esc(l.name)}</td>
@@ -846,7 +887,9 @@ function editBill(b) {
       <td class="num">${money(l.qty * l.unit)}</td><td><button class="ghost" data-del="${i}">✕</button></td></tr>`).join('');
     const tot = lines.reduce((s, l) => s + l.qty * l.unit, 0);
     $('#ed-net', box).textContent = 'สุทธิ ' + money(tot - num($('#ed-disc', box).value));
+    if ($('#ed-order', box)) orderPicker($('#ed-order', box), 'ed-order', tot - num($('#ed-disc', box).value));
   };
+  if ($('#ed-order', box)) $('#ed-order', box).oninput = render;
   $('#ed-body', box).onchange = (e) => { const i = e.target.dataset.i; if (i != null) { lines[i][e.target.dataset.f] = num(e.target.value); setTimeout(render); } };
   $('#ed-body', box).onclick = (e) => { const d = e.target.dataset.del; if (d != null) { lines.splice(num(d), 1); render(); } };
   $('#ed-disc', box).oninput = render;
@@ -864,6 +907,9 @@ function editBill(b) {
     const custText = $('#ed-cus', box).value.trim();
     const custName = customerNameFor(custText);
     const discount = round2(num($('#ed-disc', box).value));
+    const sumNow = round2(lines.reduce((s, l) => s + l.qty * l.unit, 0)) - discount;
+    const order = $('#ed-order', box) ? orderPicker($('#ed-order', box), 'ed-order', sumNow) : { order_type: b.order_type || '', paid: b.paid };
+    if (order.order_type && num(order.paid) > sumNow + 0.001) return toast('ยอดจ่ายแล้วมากกว่ายอดบิล');
     const ap = await askApproval('อนุมัติการแก้ไขบิล ' + b.bill_no, 'การแก้ไขจะถูกบันทึกประวัติไว้ทั้งก่อนและหลังแก้');
     if (!ap) return;
     const cust = customerByName(custText);
@@ -871,8 +917,9 @@ function editBill(b) {
     const newLines = lines.map((l, i) => ({ line: i + 1, code: l.code, name: l.name, model: l.model, qty: sign * l.qty, unit: l.unit, amount: round2(sign * l.qty * l.unit), status: 'ปกติ' }));
     const total = round2(newLines.reduce((s, l) => s + l.amount, 0));
     await enqueue({ type: 'editBill', bill_no: b.bill_no, lines: lines.map((l) => ({ code: l.code, name: l.name, model: l.model, qty: l.qty, unit: l.unit })),
-      discount, customer_name: custName, customer_id: cust ? cust.id : '', approval: ap.approval, reason: ap.reason });
+      discount, customer_name: custName, customer_id: cust ? cust.id : '', order_type: order.order_type, paid: order.paid, approval: ap.approval, reason: ap.reason });
     Object.assign(b, { lines: newLines, total, discount, net: round2(total - discount), customer_name: custName, customer_id: cust ? cust.id : '',
+      order_type: order.order_type, paid: order.paid,
       approved_by: ap.approval.approver, note: 'แก้ไข: ' + ap.reason, _sync: 'pending' });
     await DB.put('bills', b);
     toast('บันทึกการแก้ไขแล้ว');
@@ -928,6 +975,270 @@ function returnBill(b) {
 function afterBillChange() {
   closeModal();
   if (!$('#tab-report').classList.contains('hidden')) loadReport();
+}
+
+/* ================================================================ ใบประเมินราคาซ่อม */
+// บันทึกแยกจากบิลขาย ไม่นับเป็นยอดขาย แก้ไขได้โดยไม่ต้องใช้รหัสแอดมิน
+// เปิดบิลขายจากใบประเมินได้ โดยเลือกรายการอะไหล่ที่จะเอาไปขาย
+
+const EST_OPEN = 'ประเมิน', EST_BILLED = 'เปิดบิลแล้ว', EST_VOID = 'ยกเลิก';
+const EST_FIELDS = { date: 'est-date', phone: 'est-phone', address: 'est-address', engine_no: 'est-engine', plate: 'est-plate', color: 'est-color', mechanic: 'est-mechanic', note: 'est-note' };
+
+function newEstimate() {
+  S.est = { est_no: '', branch: S.branch, status: EST_OPEN, lines: [] };
+  for (const [k, id] of Object.entries(EST_FIELDS)) $('#' + id).value = '';
+  $('#est-date').value = todayISO();
+  $('#est-customer').value = '';
+  renderEstimate();
+  ensureNumbers(S.branch, 'est');
+}
+
+function loadEstimateForm(e) {
+  S.est = JSON.parse(JSON.stringify(e));
+  for (const [k, id] of Object.entries(EST_FIELDS)) $('#' + id).value = e[k] == null ? '' : e[k];
+  const c = customerByName(e.customer_name);
+  $('#est-customer').value = c ? customerLabel(c) : e.customer_name || '';
+  renderEstimate();
+  switchTab('estimate');
+}
+
+function estimateFromForm() {
+  const e = S.est;
+  for (const [k, id] of Object.entries(EST_FIELDS)) e[k] = $('#' + id).value.trim();
+  const text = $('#est-customer').value.trim();
+  const c = customerByName(text);
+  e.customer_id = c ? c.id : '';
+  e.customer_name = customerNameFor(text);
+  e.lines = e.lines.map((l, i) => Object.assign(l, { line: i + 1, qty: num(l.qty), unit: num(l.unit), amount: round2(num(l.qty) * num(l.unit)) }));
+  e.total = round2(e.lines.reduce((s, l) => s + l.amount, 0));
+  return e;
+}
+
+function renderEstimate() {
+  const e = S.est, locked = e.status !== EST_OPEN;
+  $('#est-no').textContent = e.est_no || '(ใบใหม่ ยังไม่บันทึก)';
+  $('#est-status').innerHTML = e.status === EST_BILLED ? `<span class="badge">เปิดบิลแล้ว ${esc(e.bill_no)}</span>`
+    : e.status === EST_VOID ? '<span class="badge void">ยกเลิก</span>'
+    : e._sync === 'pending' ? '<span class="badge pending">รอส่ง</span>' : e._sync === 'error' ? `<span class="badge error">ส่งไม่สำเร็จ: ${esc(e._error)}</span>` : '';
+  $('#est-table tbody').innerHTML = e.lines.map((l, i) => `<tr>
+    <td>${i + 1}</td><td>${esc(l.code)}</td><td>${esc(l.name)}</td><td>${esc(l.model)}</td>
+    <td class="num"><input type="number" min="1" step="1" data-i="${i}" data-f="qty" value="${l.qty}" ${locked ? 'disabled' : ''}></td>
+    <td class="num"><input type="number" min="0" step="0.01" data-i="${i}" data-f="unit" value="${l.unit}" ${locked ? 'disabled' : ''}></td>
+    <td class="num">${money(num(l.qty) * num(l.unit))}</td>
+    <td>${locked ? '' : `<button class="ghost" data-del="${i}" title="ลบรายการนี้">✕</button>`}</td></tr>`).join('')
+    || '<tr><td colspan="8" class="muted">ยังไม่มีรายการ ยิงบาร์โค้ดหรือค้นหาชื่ออะไหล่ได้เลย</td></tr>';
+  $('#est-total').textContent = money(e.lines.reduce((s, l) => s + num(l.qty) * num(l.unit), 0));
+  $$('#tab-estimate .est-head input, #est-scan, #est-note, #est-search, #est-free, #est-save, #est-void').forEach((el) => { el.disabled = locked; });
+  $('#est-to-bill').disabled = locked || !e.lines.length;
+}
+
+function addEstimateLine(p, qty = 1) {
+  if (S.est.status !== EST_OPEN) return;
+  const ex = p.code && S.est.lines.find((l) => codeKey(l.code) === codeKey(p.code));
+  if (ex) ex.qty = num(ex.qty) + qty;
+  else S.est.lines.push({ code: p.code || '', name: p.name, model: p.model || '', qty, unit: num(p.price) });
+  renderEstimate();
+}
+
+function estimateScan(code) {
+  code = code.trim();
+  if (!code) return;
+  let qty = 1;
+  const m = code.match(/^(\d+)\*(.+)$/);
+  if (m) { qty = num(m[1]); code = m[2]; }
+  const p = findPart(code);
+  if (p) return addEstimateLine(p, qty);
+  openPartSearch(code, (pp) => addEstimateLine(pp, qty), { quickAdd: false });
+}
+
+// รายการที่ไม่มีรหัส เช่น ค่าแรง ใส่ได้เฉพาะในใบประเมิน (ไม่เพิ่มเข้าฐานข้อมูลอะไหล่)
+function estimateFreeLine() {
+  const box = openModal(`<h2>เพิ่มรายการพิเศษ</h2>
+    <form class="form-grid" id="ef-form">
+      <label>รหัส (ถ้ามี)<input name="code"></label>
+      <label>รายการ *<input name="name" required autofocus placeholder="เช่น ค่าแรงเปลี่ยนชุดสี"></label>
+      <label>จำนวน<input name="qty" type="number" min="1" value="1"></label>
+      <label>ราคา/หน่วย *<input name="price" type="number" step="0.01" min="0" required></label>
+      <div class="actions"><button type="button" data-close>ยกเลิก</button><button class="primary" type="submit">เพิ่ม</button></div>
+    </form>`);
+  $('#ef-form', box).onsubmit = (ev) => {
+    ev.preventDefault();
+    const f = Object.fromEntries(new FormData(ev.target));
+    closeModal();
+    addEstimateLine({ code: f.code.trim(), name: f.name.trim(), model: '', price: num(f.price) }, Math.max(1, num(f.qty)));
+  };
+}
+
+async function saveEstimate(print) {
+  const e = estimateFromForm();
+  if (!e.lines.length) return toast('ยังไม่มีรายการอะไหล่');
+  if (!e.customer_name) return toast('ใส่ชื่อลูกค้า');
+  if (!e.est_no) {
+    try { e.est_no = await takeNumber(S.branch, 'est'); } catch (err) { return toast(err.message, 6000); }
+    e.branch = S.branch; e.created_by = S.user.username; e.created_at = nowISO();
+  }
+  await putEstimate(e);
+  toast('บันทึกใบประเมิน ' + e.est_no + ' แล้ว');
+  renderEstimate();
+  if (print) printEstimate(e);
+}
+
+async function putEstimate(e) {
+  const send = Object.assign({}, e); delete send._sync; delete send._error;
+  e._sync = 'pending';
+  await DB.put('estimates', JSON.parse(JSON.stringify(e)));
+  await enqueue({ type: 'saveEstimate', estimate: send });
+}
+
+async function markEstimateBilled(estNo, billNo) {
+  const e = (await DB.get('estimates', estNo)) || (S.est && S.est.est_no === estNo ? S.est : null);
+  if (!e) return;
+  Object.assign(e, { status: EST_BILLED, bill_no: billNo });
+  await putEstimate(e);
+  if (S.est && S.est.est_no === estNo) Object.assign(S.est, { status: EST_BILLED, bill_no: billNo });
+}
+
+async function voidEstimate() {
+  if (!S.est.est_no) return newEstimate();
+  if (!confirm('ยกเลิกใบประเมิน ' + S.est.est_no + ' ?')) return;
+  const e = estimateFromForm();
+  e.status = EST_VOID;
+  await putEstimate(e);
+  renderEstimate();
+}
+
+// เลือกรายการที่จะเอาไปเปิดบิลขาย (ติ๊กออกได้ แก้จำนวนได้)
+async function estimateToBill() {
+  const e = estimateFromForm();
+  if (!e.lines.length) return;
+  await saveEstimate(false);   // เก็บรายการล่าสุดก่อน แล้วค่อยเลือกไปเปิดบิล
+  if (!S.est.est_no || S.est._sync !== 'pending') return;
+  const box = openModal(`<h2>เปิดบิลขายจากใบประเมิน ${esc(e.est_no)}</h2>
+    <p class="small muted">ติ๊กเลือกรายการที่ลูกค้าตกลงซ่อม ราคาจะใช้ราคาขายปัจจุบันในระบบ</p>
+    <table class="grid small"><thead><tr><th><input type="checkbox" id="eb-all" checked></th><th>รหัส</th><th>ชื่ออะไหล่</th><th class="num">จำนวน</th><th class="num">ราคา/หน่วย</th></tr></thead>
+    <tbody id="eb-body">${e.lines.map((l, i) => {
+      const p = l.code && findPart(l.code);
+      return `<tr><td><input type="checkbox" data-i="${i}" checked></td><td>${esc(l.code)}</td><td>${esc(l.name)}${p ? '' : ' <span class="badge">ไม่มีในระบบ</span>'}</td>
+        <td class="num"><input type="number" min="1" data-q="${i}" value="${l.qty}" style="width:70px"></td><td class="num">${money(p ? p.price : l.unit)}</td></tr>`;
+    }).join('')}</tbody></table>
+    <p class="small muted" id="eb-sum"></p>
+    <div class="actions"><button data-close>ยกเลิก</button><button class="primary" id="eb-go">ไปหน้าขาย</button></div>`);
+  const picked = () => $$('#eb-body [data-i]', box).filter((c) => c.checked).map((c) => num(c.dataset.i));
+  const sum = () => { $('#eb-sum', box).textContent = `เลือก ${picked().length} จาก ${e.lines.length} รายการ`; };
+  $('#eb-all', box).onchange = (ev) => { $$('#eb-body [data-i]', box).forEach((c) => { c.checked = ev.target.checked; }); sum(); };
+  $('#eb-body', box).onchange = sum; sum();
+  $('#eb-go', box).onclick = async () => {
+    const idx = picked();
+    if (!idx.length) return toast('เลือกอย่างน้อย 1 รายการ');
+    if (S.cart.lines.length && !confirm('หน้าขายมีรายการค้างอยู่ จะล้างแล้วใส่รายการจากใบประเมินแทน?')) return;
+    const qtys = Object.fromEntries(idx.map((i) => [i, Math.max(1, num($(`[data-q="${i}"]`, box).value))]));
+    const qty = (i) => qtys[i];
+    closeModal();
+    switchTab('sale');
+    await newSale();
+    S.cart.fromEst = e.est_no;
+    S.cart.lines = idx.map((i) => {
+      const l = e.lines[i], p = l.code && findPart(l.code);
+      return p ? { code: p.code, name: p.name, model: p.model, qty: qty(i), unit: num(p.price), listPrice: num(p.price) }
+        : { code: l.code || 'ไม่มีรหัส', name: l.name, model: l.model, qty: qty(i), unit: num(l.unit), listPrice: num(l.unit) };
+    });
+    const c = customerByName(e.customer_name);
+    $('#sale-customer').value = c ? customerLabel(c) : e.customer_name;
+    $('#scan-msg').textContent = `รายการจากใบประเมิน ${e.est_no} ตรวจแล้วกดบันทึกได้เลย`;
+    renderCart();
+  };
+}
+
+// หัวเอกสาร: สำนักงานใหญ่ หรือ "สาขา 1 (แม่สอด)"
+function branchTitle(b) { return b.code === 'HQ' || !b.branch_no ? b.name : `สาขา ${b.branch_no} (${b.name})`; }
+
+function estimateHtml(e) {
+  const br = branchInfo(e.branch);
+  const rows = Math.max(15, e.lines.length);
+  let body = '';
+  for (let i = 0; i < rows; i++) {
+    const l = e.lines[i];
+    body += l ? `<tr><td class="c">${i + 1}</td><td>${esc(l.code)}</td><td>${esc(l.name)}</td><td>${esc(l.model)}</td><td class="c">${l.qty}</td><td class="num">${money(l.unit)}</td><td class="num">${money(num(l.qty) * num(l.unit))}</td></tr>`
+      : `<tr class="empty"><td class="c">${i + 1}</td><td></td><td></td><td></td><td></td><td></td><td></td></tr>`;
+  }
+  const total = e.lines.reduce((s, l) => s + num(l.qty) * num(l.unit), 0);
+  const info = (label, val, cls = '') => `<div class="ed-f ${cls}"><span>${label}</span><b>${esc(val) || '&nbsp;'}</b></div>`;
+  return `<div class="est-doc">
+    <header class="ed-head">
+      <div class="ed-shop">
+        <div class="ed-name">${esc(S.settings.shop_name || 'หจก.ประสบชัยกลการ')}</div>
+        <div class="ed-branch">${esc(branchTitle(br))}</div>
+        <div>${esc(br.address || '')}</div>
+        <div>โทร ${esc(br.phone || '')} · ติดต่อฝ่ายบริการ</div>
+      </div>
+      <div class="ed-titlebox">
+        <div class="ed-title">ใบประเมินราคาค่าซ่อม</div>
+        <div class="ed-meta"><span>เลขที่</span><b>${esc(e.est_no)}</b></div>
+        <div class="ed-meta"><span>วันที่</span><b>${thDate(e.date)}</b></div>
+      </div>
+    </header>
+    <section class="ed-info">
+      ${info('ชื่อ-สกุล', e.customer_name, 'w2')}${info('โทร', e.phone)}
+      ${info('ที่อยู่', e.address, 'w3')}
+      ${info('หมายเลขเครื่อง', e.engine_no)}${info('ทะเบียน', e.plate)}${info('สี', e.color)}
+    </section>
+    <table class="ed-table">
+      <thead><tr><th style="width:7%">ลำดับ</th><th style="width:19%">รหัสอะไหล่</th><th>ชื่ออะไหล่ / รายการ</th><th style="width:13%">รุ่น</th><th style="width:8%">จำนวน</th><th style="width:12%">ราคา/หน่วย</th><th style="width:13%">รวมเงิน</th></tr></thead>
+      <tbody>${body}</tbody>
+    </table>
+    <div class="ed-sum">
+      <div class="ed-note">${e.note ? `<b>หมายเหตุ:</b> ${esc(e.note)}` : ''}</div>
+      <div class="ed-total"><span>รวมราคาค่าซ่อมโดยประมาณ</span><b>${money(total)}</b><small>(${esc(bahtText(total))})</small></div>
+    </div>
+    <p class="ed-disclaimer">หมายเหตุ: เอกสารนี้ใช้ในการประเมินค่าซ่อมเบื้องต้น ราคาอะไหล่อาจจะมีการเปลี่ยนแปลง</p>
+    <div class="ed-sign">
+      <div><div class="line"></div>ผู้ประเมิน${e.mechanic ? ` (ช่าง${esc(e.mechanic)})` : ''}</div>
+      <div><div class="line"></div>ลูกค้า</div>
+    </div>
+  </div>`;
+}
+
+function printEstimate(e) {
+  $('#print-area').innerHTML = estimateHtml(e);
+  setTimeout(() => window.print(), 50);
+}
+
+async function estimateList() {
+  const box = openModal(`<h2>ค้นหาใบประเมินราคา</h2>
+    <div class="row"><label>ตั้งแต่<input type="date" id="el-from"></label><label>ถึง<input type="date" id="el-to"></label>
+      <input id="el-q" placeholder="ชื่อ เบอร์ ทะเบียน หรือเลขที่" style="flex:1"><button class="primary" id="el-go">ค้นหา</button></div>
+    <p class="small muted" id="el-msg"></p>
+    <div class="search-results"><table class="grid small"><thead><tr><th>เลขที่</th><th>วันที่</th><th>ลูกค้า</th><th>ทะเบียน</th><th class="num">รวม</th><th>สถานะ</th></tr></thead><tbody id="el-body"></tbody></table></div>
+    <div class="actions"><button data-close>ปิด</button></div>`);
+  const d = new Date(); d.setDate(d.getDate() - 30);
+  $('#el-from', box).value = `${d.getFullYear()}-${pad(d.getMonth() + 1, 2)}-${pad(d.getDate(), 2)}`;
+  $('#el-to', box).value = todayISO();
+  let found = [];
+  const run = async () => {
+    const from = $('#el-from', box).value, to = $('#el-to', box).value, q = $('#el-q', box).value.trim().toLowerCase();
+    const local = (await DB.all('estimates')).filter((e) => e.branch === S.branch);
+    let rows = local, src = 'ข้อมูลในเครื่อง';
+    try {
+      const server = await api('estimates', { branch: S.branch, from, to, q });
+      const pending = local.filter((e) => e._sync && e._sync !== 'synced');
+      const byNo = new Map(server.map((e) => [e.est_no, Object.assign(e, { _sync: 'synced' })]));
+      pending.forEach((e) => byNo.set(e.est_no, e));
+      rows = [...byNo.values()];
+      await DB.putMany('estimates', server.filter((e) => !pending.some((p) => p.est_no === e.est_no)));
+      src = 'ข้อมูลจากระบบกลาง';
+    } catch (err) { if (!(err instanceof NetError)) toast(err.message); }
+    found = rows.filter((e) => e.date >= from && e.date <= to
+      && (!q || [e.est_no, e.customer_name, e.phone, e.plate, e.engine_no].join(' ').toLowerCase().includes(q)))
+      .sort((a, b) => a.est_no < b.est_no ? 1 : -1);
+    $('#el-msg', box).textContent = `${src} · ${found.length} ใบ`;
+    $('#el-body', box).innerHTML = found.map((e, i) => `<tr class="clickable" data-pick="${i}"><td>${esc(e.est_no)}</td><td>${thDate(e.date)}</td><td>${esc(e.customer_name)}</td>
+      <td>${esc(e.plate)}</td><td class="num">${money(e.total)}</td><td>${esc(e.status)}${e.bill_no ? ' ' + esc(e.bill_no) : ''}${e._sync === 'pending' ? ' <span class="badge pending">รอส่ง</span>' : ''}</td></tr>`).join('')
+      || '<tr><td colspan="6" class="muted">ไม่พบ</td></tr>';
+  };
+  $('#el-go', box).onclick = run;
+  $('#el-q', box).onkeydown = (ev) => { if (ev.key === 'Enter') run(); };
+  $('#el-body', box).onclick = (ev) => { const tr = ev.target.closest('[data-pick]'); if (tr) { closeModal(); loadEstimateForm(found[num(tr.dataset.pick)]); } };
+  run();
 }
 
 /* ================================================================ รายงาน */
@@ -991,8 +1302,8 @@ function renderReport() {
     return `<tr class="clickable ${cls}" data-bill="${esc(b.bill_no)}"><td>${first ? esc(b.bill_no) : ''}</td><td>${first ? thDate(b.date) : ''}</td>
       <td>${esc(l.code)}</td><td>${esc(l.name)}</td><td>${esc(l.model)}</td><td class="num">${l.qty}</td><td class="num">${money(l.unit)}</td><td class="num">${money(l.amount)}</td>
       <td>${first ? esc(b.customer_name) : ''}</td><td class="num">${first ? money(b.total) : ''}</td><td class="num">${first ? money(b.discount) : ''}</td>
-      <td class="num">${first ? money(b.net) : ''}</td><td>${first ? st + sync : ''}</td></tr>`;
-  }).join('') || '<tr><td colspan="13" class="muted">ไม่มีบิล</td></tr>';
+      <td class="num">${first ? money(b.net) : ''}</td><td>${first ? st + sync : ''}</td><td>${first ? esc(orderText(b, false)) : ''}</td></tr>`;
+  }).join('') || '<tr><td colspan="14" class="muted">ไม่มีบิล</td></tr>';
 }
 
 function exportExcel() {
@@ -1032,8 +1343,11 @@ async function loadAudit() {
 }
 
 function loadDiscountAdmin() {
-  $('#branch-disc-body').innerHTML = S.branches.map((b) => `<tr><td>${esc(b.name)}</td>
-    <td class="num"><input type="number" step="0.01" min="0" max="100" name="${esc(b.code)}" value="${num(b.discount_pct)}" style="width:90px"></td></tr>`).join('');
+  $('#branch-disc-body').innerHTML = S.branches.map((b) => `<tr data-code="${esc(b.code)}"><td>${esc(b.name)}</td>
+    <td><input name="branch_no" value="${esc(b.branch_no)}" style="width:60px" placeholder="-"></td>
+    <td><input name="address" value="${esc(b.address)}" style="min-width:320px"></td>
+    <td><input name="phone" value="${esc(b.phone)}" style="width:120px"></td>
+    <td class="num"><input type="number" step="0.01" min="0" max="100" name="discount_pct" value="${num(b.discount_pct)}" style="width:80px"></td></tr>`).join('');
   $('#branch-disc-msg').textContent = '';
   const odd = S.partsList.filter((p) => p.maxDisc !== '' && p.maxDisc != null).sort((a, b) => a.code < b.code ? -1 : 1);
   $('#special-parts-body').innerHTML = odd.map((p) => `<tr><td>${esc(p.code)}</td><td>${esc(p.name)}</td><td class="num">${money(p.price)}</td>
@@ -1043,21 +1357,22 @@ function loadDiscountAdmin() {
 
 async function saveBranchDiscounts(ev) {
   ev.preventDefault();
-  const discounts = {};
-  for (const inp of $$('#branch-disc-body input')) {
-    const v = num(inp.value);
-    if (inp.value === '' || v < 0 || v > 100) return toast('ส่วนลดต้องเป็น 0 ถึง 100%');
-    discounts[inp.name] = v;
+  const branches = [];
+  for (const tr of $$('#branch-disc-body tr')) {
+    const g = (n) => $(`[name=${n}]`, tr).value;
+    const v = num(g('discount_pct'));
+    if (g('discount_pct') === '' || v < 0 || v > 100) return toast('ส่วนลดต้องเป็น 0 ถึง 100%');
+    branches.push({ code: tr.dataset.code, discount_pct: v, branch_no: g('branch_no').trim(), address: g('address').trim(), phone: g('phone').trim() });
   }
   try {
-    const r = await api('saveBranchDiscounts', { discounts });
+    const r = await api('saveBranches', { branches });
     S.branches = r.branches;
     const sess = await DB.kv.get('session');
     if (sess) { sess.branches = r.branches; await DB.kv.set('session', sess); }
+    loadDiscountAdmin();
     $('#branch-disc-msg').textContent = 'บันทึกแล้ว เครื่องอื่นจะได้ค่าใหม่ตอนเปิดแอปครั้งถัดไป';
-    loadDiscountAdmin(); $('#branch-disc-msg').textContent = 'บันทึกแล้ว เครื่องอื่นจะได้ค่าใหม่ตอนเปิดแอปครั้งถัดไป';
     renderCart();
-  } catch (e) { toast(e instanceof NetError ? 'ต้องต่ออินเทอร์เน็ตก่อนจึงจะแก้ส่วนลดได้' : e.message, 6000); }
+  } catch (e) { toast(e instanceof NetError ? 'ต้องต่ออินเทอร์เน็ตก่อนจึงจะแก้ข้อมูลสาขาได้' : e.message, 6000); }
 }
 
 function renderPendingParts() {
@@ -1162,6 +1477,7 @@ function switchTab(name) {
   if (name === 'report' && !S.report) { $('#rep-from').value = $('#rep-from').value || todayISO(); $('#rep-to').value = $('#rep-to').value || todayISO(); loadReport(); }
   if (name === 'print' && S.printBill) renderPrintPreview(S.printBill);
   if (name === 'admin') loadAudit();
+  if (name === 'estimate') { if (!S.est || S.est.branch !== S.branch) newEstimate(); $('#est-scan').focus(); }
 }
 
 function bindStatic() {
@@ -1195,6 +1511,7 @@ function bindStatic() {
     await DB.kv.set('branch:' + S.user.username, S.branch);
     await loadCustomers(); syncCustomers();
     newSale();
+    if (!$('#tab-estimate').classList.contains('hidden')) newEstimate();
   };
   $$('.tabs button').forEach((b) => b.onclick = () => switchTab(b.dataset.tab));
   $$('.subtabs button').forEach((b) => b.onclick = () => {
@@ -1218,6 +1535,7 @@ function bindStatic() {
   $('#sale-table').onclick = (e) => { const d = e.target.dataset.del; if (d != null) { S.cart.lines.splice(num(d), 1); renderCart(); } };
   $('#sale-discount').oninput = () => { S.cart.discBy = 'baht'; renderCart(); };
   $('#sale-discount-pct').oninput = () => { S.cart.discBy = 'pct'; renderCart(); };
+  $('#sale-order').oninput = () => { renderCart(); if (!$('#sale-paid').disabled && document.activeElement.type === 'radio') $('#sale-paid').focus(); };
   $('#sale-customer').onchange = (e) => { const c = customerByName(e.target.value); if (c) e.target.value = customerLabel(c); };
   $('#sale-customer').onfocus = (e) => e.target.select();
   $('#btn-clear').onclick = () => { if (!S.cart.lines.length || confirm('ล้างรายการบนหน้าจอ?')) newSale(); };
@@ -1257,6 +1575,24 @@ function bindStatic() {
   $('#audit-table').onclick = (e) => { const tr = e.target.closest('[data-bill]'); if (tr) openBill(tr.dataset.bill); };
   $('#user-form').onsubmit = saveUserForm;
   $('#branch-disc-form').onsubmit = saveBranchDiscounts;
+  // ใบประเมินราคา
+  $('#est-scan').onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); estimateScan(e.target.value); e.target.value = ''; } };
+  $('#est-search').onclick = () => openPartSearch('', (p) => addEstimateLine(p), { quickAdd: false });
+  $('#est-free').onclick = estimateFreeLine;
+  $('#est-table').onchange = (e) => { const i = e.target.dataset.i; if (i == null) return; S.est.lines[i][e.target.dataset.f] = num(e.target.value); setTimeout(renderEstimate); };
+  $('#est-table').onclick = (e) => { const d = e.target.dataset.del; if (d != null) { S.est.lines.splice(num(d), 1); renderEstimate(); } };
+  $('#est-customer').onchange = (e) => {
+    const c = customerByName(e.target.value); if (!c) return;
+    e.target.value = customerLabel(c);
+    if (!$('#est-phone').value && c.phone) $('#est-phone').value = c.phone;
+    if (!$('#est-address').value && c.address) $('#est-address').value = c.address;
+  };
+  $('#est-new').onclick = () => { if (S.est && !S.est.est_no && S.est.lines.length && !confirm('ใบนี้ยังไม่ได้บันทึก จะเริ่มใบใหม่?')) return; newEstimate(); };
+  $('#est-list-btn').onclick = estimateList;
+  $('#est-save').onclick = () => saveEstimate(false);
+  $('#est-save-print').onclick = () => (S.est.status === EST_OPEN ? saveEstimate(true) : printEstimate(S.est));
+  $('#est-void').onclick = voidEstimate;
+  $('#est-to-bill').onclick = estimateToBill;
   $('#pending-parts-body').onclick = onPendingPartClick;
   $('#special-parts-body').onclick = (e) => {
     const code = e.target.dataset.editPart; if (!code) return;

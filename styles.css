@@ -124,3 +124,56 @@ tr.ret td { color: var(--bad); }
   .disc-pair #sale-discount { width: 92px; }
   .disc-pair #sale-discount-pct { width: 56px; }
 }
+
+/* หมายเหตุใบเบิก: สั่งด่วน / สั่งรายสัปดาห์ + จ่ายแล้ว */
+.order-opts { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: center; margin-top: 6px; }
+.order-opts > span:first-child { font-weight: 600; }
+.order-opts label { display: inline-flex; gap: 4px; align-items: center; white-space: nowrap; }
+.order-opts .paid input { width: 110px; text-align: right; }
+.receipt td.r-memo { font-size: 10.5px; white-space: nowrap; overflow: hidden; }
+
+/* ---------------------------------------------------------------- ใบประเมินราคา (หน้าจอ) */
+.est-top { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 10px; }
+.est-head { grid-template-columns: repeat(4, 1fr); }
+.est-head .span2 { grid-column: span 2; }
+.est-note { display: flex; flex-direction: column; gap: 3px; font-size: 13px; color: var(--muted); flex: 1; min-width: 240px; max-width: 520px; }
+#tab-estimate .tot-grid { grid-template-columns: auto 160px; }
+button.alt { background: #2e7d4f; border-color: #2e7d4f; }
+.danger-text { color: var(--bad); }
+@media (max-width: 700px) { .est-head { grid-template-columns: 1fr 1fr; } }
+
+/* ---------------------------------------------------------------- ใบประเมินราคา (พิมพ์ A4) */
+.est-doc { --ed: #1f4e79; --ed-soft: #e8f0f8; width: 190mm; min-height: 270mm; padding: 2mm 2mm; color: #111; font-size: 12.5px;
+  display: flex; flex-direction: column; -webkit-print-color-adjust: exact; print-color-adjust: exact; background: #fff; }
+#print-preview .est-doc, .preview .est-doc { box-shadow: 0 1px 6px rgba(0,0,0,.15); margin: 0 auto; padding: 8mm; }
+.est-doc .ed-head { display: flex; justify-content: space-between; align-items: stretch; gap: 10mm; border-bottom: 3px solid var(--ed); padding-bottom: 4mm; }
+.est-doc .ed-shop { line-height: 1.5; }
+.est-doc .ed-name { font-size: 20px; font-weight: 700; color: var(--ed); }
+.est-doc .ed-branch { font-size: 14px; font-weight: 600; }
+.est-doc .ed-titlebox { min-width: 62mm; border: 1.5px solid var(--ed); border-radius: 3mm; overflow: hidden; display: flex; flex-direction: column; }
+.est-doc .ed-title { background: var(--ed); color: #fff; font-size: 16px; font-weight: 700; text-align: center; padding: 2mm 3mm; }
+.est-doc .ed-meta { display: flex; justify-content: space-between; padding: 1.2mm 4mm; }
+.est-doc .ed-meta + .ed-meta { border-top: 1px solid #c9d6e3; }
+.est-doc .ed-meta span { color: #555; }
+.est-doc .ed-info { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0; margin: 4mm 0; border: 1px solid #b8c7d6; border-radius: 2mm; overflow: hidden; }
+.est-doc .ed-f { display: flex; gap: 3mm; padding: 1.6mm 3mm; border-bottom: 1px solid #dde5ee; border-right: 1px solid #dde5ee; }
+.est-doc .ed-f span { color: #555; white-space: nowrap; }
+.est-doc .ed-f b { font-weight: 600; }
+.est-doc .ed-f.w2 { grid-column: span 2; }
+.est-doc .ed-f.w3 { grid-column: span 3; }
+.est-doc .ed-table { width: 100%; border-collapse: collapse; }
+.est-doc .ed-table th { background: var(--ed); color: #fff; font-weight: 600; padding: 1.8mm 2mm; font-size: 12px; border: 1px solid var(--ed); }
+.est-doc .ed-table td { border: 1px solid #c3cfdb; padding: 0 2mm; height: 6.4mm; font-size: 12px; }
+.est-doc .ed-table tbody tr:nth-child(even) td { background: var(--ed-soft); }
+.est-doc .ed-table td.c { text-align: center; }
+.est-doc .ed-table tr.empty td.c { color: #aab6c3; }
+.est-doc .ed-sum { display: flex; justify-content: space-between; gap: 8mm; margin-top: 3mm; align-items: flex-start; }
+.est-doc .ed-note { flex: 1; padding-top: 2mm; }
+.est-doc .ed-total { min-width: 78mm; border: 2px solid var(--ed); border-radius: 2mm; padding: 2mm 4mm; display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 1mm 4mm; }
+.est-doc .ed-total span { font-weight: 600; }
+.est-doc .ed-total b { font-size: 18px; color: var(--ed); }
+.est-doc .ed-total small { grid-column: 1 / -1; text-align: right; color: #444; }
+.est-doc .ed-disclaimer { margin: 4mm 0 0; padding: 2mm 3mm; background: #fff6e0; border-left: 3px solid #e0a100; font-size: 12px; }
+.est-doc .ed-sign { display: flex; justify-content: space-around; margin-top: auto; padding-top: 14mm; text-align: center; }
+.est-doc .ed-sign .line { width: 62mm; border-bottom: 1px dotted #333; margin-bottom: 1.5mm; height: 8mm; }
+@media print { .est-doc { box-shadow: none !important; padding: 0 !important; min-height: 277mm; } }

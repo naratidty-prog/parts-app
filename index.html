@@ -47,6 +47,7 @@
   <nav class="tabs no-print">
     <button data-tab="sale" class="active">บันทึกขายอะไหล่</button>
     <button data-tab="print">พิมพ์ใบเสร็จ</button>
+    <button data-tab="estimate">ใบประเมินราคา</button>
     <button data-tab="report">รายงานบันทึกขายอะไหล่</button>
     <button data-tab="customers">ลูกค้า</button>
     <button data-tab="admin" class="admin-only">แอดมิน</button>
@@ -60,6 +61,14 @@
       <label class="field">วันที่<input type="date" id="sale-date"></label>
       <label class="field grow">ลูกค้า<input id="sale-customer" list="customer-list" placeholder="พิมพ์ชื่อ หรือรหัสลูกค้า" value="เงินสด"></label>
       <datalist id="customer-list"></datalist>
+      <div class="order-opts" id="sale-order">
+        <span>หมายเหตุ</span>
+        <label><input type="radio" name="sale-order" value="" checked> ปกติ</label>
+        <label><input type="radio" name="sale-order" value="สั่งด่วน"> รายการอะไหล่สั่งด่วน</label>
+        <label><input type="radio" name="sale-order" value="สั่งรายสัปดาห์"> รายการสั่งรายสัปดาห์</label>
+        <label class="paid">จ่ายเงินแล้ว<input id="sale-paid" type="number" step="0.01" min="0" placeholder="0.00" disabled> บาท</label>
+        <span class="muted small" id="sale-owe"></span>
+      </div>
     </div>
     <div class="scan card">
       <input id="scan-input" placeholder="ยิงบาร์โค้ด หรือพิมพ์รหัสอะไหล่ แล้วกด Enter" autocomplete="off">
@@ -99,6 +108,51 @@
     <div id="print-preview" class="preview"></div>
   </main>
 
+  <!-- ใบประเมินราคาซ่อม (บันทึกแยกจากบิลขาย) -->
+  <main id="tab-estimate" class="tab hidden no-print">
+    <div class="card">
+      <div class="est-top">
+        <div class="field"><span>เลขที่ใบประเมิน</span><b id="est-no">-</b></div>
+        <span id="est-status"></span>
+        <div class="actions" style="margin:0 0 0 auto">
+          <button id="est-list-btn">ค้นหาใบเก่า</button>
+          <button id="est-new" class="ghost">ใบใหม่</button>
+        </div>
+      </div>
+      <div class="form-grid est-head">
+        <label>วันที่<input type="date" id="est-date"></label>
+        <label class="span2">ชื่อ-สกุลลูกค้า<input id="est-customer" list="customer-list" placeholder="พิมพ์ชื่อ หรือรหัสลูกค้า"></label>
+        <label>เบอร์โทร<input id="est-phone" inputmode="tel"></label>
+        <label class="span2">ที่อยู่<input id="est-address"></label>
+        <label>หมายเลขเครื่อง<input id="est-engine"></label>
+        <label>ทะเบียน<input id="est-plate"></label>
+        <label>สี<input id="est-color"></label>
+        <label>ช่าง<input id="est-mechanic"></label>
+      </div>
+    </div>
+    <div class="scan card">
+      <input id="est-scan" placeholder="ยิงบาร์โค้ด หรือพิมพ์รหัสอะไหล่ แล้วกด Enter" autocomplete="off">
+      <button id="est-search">ค้นหาชื่อ</button>
+      <button id="est-free" class="ghost" title="ค่าแรงหรือรายการที่ไม่มีรหัส">+ รายการพิเศษ</button>
+    </div>
+    <div class="card">
+      <table class="grid" id="est-table">
+        <thead><tr><th>#</th><th>รหัสอะไหล่</th><th>ชื่ออะไหล่</th><th>รุ่น</th><th class="num">จำนวน</th><th class="num">ราคา/หน่วย</th><th class="num">รวมเงิน</th><th></th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <div class="totals">
+        <label class="est-note">หมายเหตุ<input id="est-note" placeholder="เช่น นัดรับรถ / อาการที่ตรวจพบ"></label>
+        <div class="tot-grid"><span>รวมราคาค่าซ่อมโดยประมาณ</span><b id="est-total" class="big">0.00</b></div>
+      </div>
+      <div class="actions">
+        <button id="est-void" class="ghost danger-text">ยกเลิกใบนี้</button>
+        <button id="est-save">บันทึก</button>
+        <button id="est-save-print" class="primary">บันทึกและพิมพ์</button>
+        <button id="est-to-bill" class="primary alt">เปิดบิลขายจากใบประเมิน</button>
+      </div>
+    </div>
+  </main>
+
   <!-- รายงาน -->
   <main id="tab-report" class="tab hidden no-print">
     <div class="card row">
@@ -112,7 +166,7 @@
     <div class="card" id="rep-summary"></div>
     <div class="card scroll-x">
       <table class="grid small" id="rep-table">
-        <thead><tr><th>ใบเสร็จเลขที่</th><th>วันที่</th><th>รหัสอะไหล่</th><th>ชื่ออะไหล่</th><th>รุ่น</th><th class="num">จำนวน</th><th class="num">หน่วยละ</th><th class="num">จำนวนเงิน</th><th>ชื่อผู้ซื้อ</th><th class="num">รวมเงิน</th><th class="num">ส่วนลด</th><th class="num">เหลือ</th><th>สถานะ</th></tr></thead>
+        <thead><tr><th>ใบเสร็จเลขที่</th><th>วันที่</th><th>รหัสอะไหล่</th><th>ชื่ออะไหล่</th><th>รุ่น</th><th class="num">จำนวน</th><th class="num">หน่วยละ</th><th class="num">จำนวนเงิน</th><th>ชื่อผู้ซื้อ</th><th class="num">รวมเงิน</th><th class="num">ส่วนลด</th><th class="num">เหลือ</th><th>สถานะ</th><th>หมายเหตุ</th></tr></thead>
         <tbody></tbody>
       </table>
     </div>
@@ -138,7 +192,7 @@
       <button data-sub="audit" class="active">ประวัติแก้ไข/ลบ/คืน</button>
       <button data-sub="parts">ข้อมูลอะไหล่</button>
       <button data-sub="users">ผู้ใช้</button>
-      <button data-sub="discounts">ส่วนลด</button>
+      <button data-sub="discounts">สาขาและส่วนลด</button>
     </nav>
     <div id="sub-audit" class="sub">
       <div class="card row"><button id="btn-audit-load" class="primary">โหลดประวัติล่าสุด</button></div>
@@ -188,9 +242,9 @@
     </div>
     <div id="sub-discounts" class="sub hidden">
       <form class="card" id="branch-disc-form">
-        <h3>ส่วนลดของแต่ละสาขา</h3>
-        <p class="small muted">พนักงานพิมพ์ส่วนลดเองได้ไม่เกิน % ของสาขาตัวเอง ถ้าเกินต้องใส่รหัสอนุมัติของแอดมิน</p>
-        <table class="grid small"><thead><tr><th>สาขา</th><th class="num">ลดได้สูงสุด (%)</th></tr></thead><tbody id="branch-disc-body"></tbody></table>
+        <h3>ข้อมูลสาขาและส่วนลด</h3>
+        <p class="small muted">ส่วนลด: พนักงานพิมพ์ส่วนลดเองได้ไม่เกิน % ของสาขาตัวเอง ถ้าเกินต้องใส่รหัสอนุมัติของแอดมิน · เลขสาขา ที่อยู่ และเบอร์โทร ใช้พิมพ์หัวใบประเมินราคา</p>
+        <div class="scroll-x"><table class="grid small"><thead><tr><th>สาขา</th><th>เลขสาขา</th><th>ที่อยู่</th><th>เบอร์โทร</th><th class="num">ลดได้สูงสุด (%)</th></tr></thead><tbody id="branch-disc-body"></tbody></table></div>
         <div class="actions"><button class="primary" type="submit">บันทึก</button></div>
         <p id="branch-disc-msg"></p>
       </form>
