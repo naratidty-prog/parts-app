@@ -203,7 +203,7 @@ async function doLogin(username, pin) {
     if (!(e instanceof NetError)) throw e;
     // ออฟไลน์: ตรวจรหัสกับข้อมูลที่เครื่องจำไว้
     const u = users[username.toLowerCase()];
-    if (!u) throw new Error('ออฟไลน์อยู่ และผู้ใช้นี้ยังไม่เคยเข้าระบบในเครื่องนี้');
+    if (!u) throw new Error(navigator.onLine ? 'ติดต่อระบบหลังบ้านไม่ได้: ตรวจลิงก์ Web app ใน config.js และตั้งผู้มีสิทธิ์เข้าถึงเป็น "ทุกคน"' : 'ออฟไลน์อยู่ และผู้ใช้นี้ยังไม่เคยเข้าระบบในเครื่องนี้');
     if ((await hashPin(u.salt, pin)) !== u.hash) throw new Error('ชื่อผู้ใช้หรือรหัสไม่ถูกต้อง');
     return Object.assign({}, u.boot, { token: u.token });
   }
@@ -329,7 +329,8 @@ function searchParts(q, limit = 80) {
 async function loadCustomers() {
   const all = await DB.all('customers');
   S.customers = all.filter((c) => c.branch === S.branch);
-  $('#customer-list').innerHTML = S.customers.map((c) => `<option value="${esc(c.display)}">`).join('');
+  // ตัวเลือกแสดงทั้งรหัสและชื่อ พิมพ์ส่วนไหนก็ค้นเจอ
+  $('#customer-list').innerHTML = S.customers.map((c) => `<option value="${esc(customerLabel(c))}">${esc(c.phone || '')}</option>`).join('');
   renderCustomers();
 }
 
@@ -347,22 +348,34 @@ async function syncCustomers() {
   } catch (e) { if (!(e instanceof NetError)) toast(e.message); }
 }
 
-function customerByName(name) { return S.customers.find((c) => c.display === name); }
+// รหัสลูกค้า = ส่วนหลังรหัสสาขาใน id เช่น HQ-0003 -> 0003 (พิมพ์ 3 ก็หาเจอ)
+function customerCode(c) { return String(c.id || '').split('-').slice(1).join('-').replace(/^0+(?=\d)/, ''); }
+const codeNorm = (v) => String(v || '').trim().toUpperCase().replace(/^0+(?=\d)/, '');
+function customerLabel(c) { const code = customerCode(c); return code ? `${code} · ${c.display}` : c.display; }
+function customerByName(name) {
+  name = String(name || '').trim();
+  return S.customers.find((c) => customerLabel(c) === name) || S.customers.find((c) => c.display === name)
+    || S.customers.find((c) => codeNorm(customerCode(c)) === codeNorm(name));
+}
+// ชื่อที่จะพิมพ์ลงบิล: ถ้าเป็นลูกค้าในระบบใช้ชื่อในระบบ ถ้าพิมพ์ชื่อใหม่ใช้ตามที่พิมพ์
+function customerNameFor(text) { const c = customerByName(text); return c ? c.display : String(text || '').trim(); }
 function customerFull(c) { return c ? [c.title, c.first, c.last].filter(Boolean).join(' ').trim() : ''; }
 
 function renderCustomers() {
   const q = ($('#cus-search').value || '').toLowerCase();
   const rows = S.customers.filter((c) => !q || JSON.stringify(c).toLowerCase().includes(q)).slice(0, 300);
-  $('#cus-table tbody').innerHTML = rows.map((c) => `<tr>
+  $('#cus-table tbody').innerHTML = rows.map((c) => `<tr><td>${esc(customerCode(c))}</td>
     <td>${esc(c.display)} ${c._pending ? '<span class="badge pending">รอส่ง</span>' : ''}</td><td>${esc(customerFull(c))}</td>
     <td>${esc(c.phone)}</td><td>${esc(c.address)}</td><td><button data-cus="${esc(c.id)}">แก้ไข</button></td></tr>`).join('');
 }
 
 function customerForm(c) {
-  c = c || { id: S.branch + '-' + uid(), branch: S.branch };
-  const box = openModal(`<h2>${c.display ? 'แก้ไขลูกค้า' : 'เพิ่มลูกค้า'}</h2>
+  const isNew = !c;
+  c = c || { branch: S.branch };
+  const box = openModal(`<h2>${isNew ? 'เพิ่มลูกค้า' : 'แก้ไขลูกค้า'}</h2>
     <form class="form-grid" id="cus-form">
-      <label>ชื่อที่ใช้ในบิล *<input name="display" required autofocus value="${esc(c.display)}"></label>
+      <label>รหัสลูกค้า *<input name="code" required ${isNew ? 'autofocus' : 'readonly'} value="${esc(isNew ? '' : customerCode(c))}" placeholder="เช่น 0431"></label>
+      <label>ชื่อที่ใช้ในบิล *<input name="display" required value="${esc(c.display)}"></label>
       <label>คำนำหน้า<input name="title" value="${esc(c.title)}"></label>
       <label>ชื่อ<input name="first" value="${esc(c.first)}"></label>
       <label>นามสกุล<input name="last" value="${esc(c.last)}"></label>
@@ -374,7 +387,11 @@ function customerForm(c) {
   $('#cus-form', box).onsubmit = async (ev) => {
     ev.preventDefault();
     const f = Object.fromEntries(new FormData(ev.target));
-    const rec = Object.assign({}, c, f);
+    const code = String(f.code || '').trim().replace(/[^0-9A-Za-z._-]/g, '');
+    delete f.code;
+    if (!code) return toast('ใส่รหัสลูกค้าเป็นตัวเลขหรือตัวอักษรอังกฤษ');
+    if (isNew && S.customers.some((x) => codeNorm(customerCode(x)) === codeNorm(code))) return toast('รหัสลูกค้านี้มีอยู่แล้ว');
+    const rec = Object.assign({}, c, f, isNew ? { id: S.branch + '-' + code } : {});
     if (S.customers.some((x) => x.display === rec.display && x.id !== rec.id)) return toast('ชื่อนี้มีอยู่แล้ว');
     delete rec._pending;
     await enqueue({ type: 'saveCustomer', customer: rec });
@@ -548,7 +565,7 @@ async function newSale() {
   S.cart = { lines: [] };
   $('#sale-date').value = todayISO();
   $('#sale-date').disabled = !isAdmin();
-  $('#sale-customer').value = 'เงินสด';
+  $('#sale-customer').value = (customerByName('เงินสด') && customerLabel(customerByName('เงินสด'))) || 'เงินสด';
   $('#sale-discount').value = 0;
   $('#scan-msg').textContent = '';
   renderCart();
@@ -617,8 +634,9 @@ function openPartSearch(q, onPick) {
 async function saveSale(print) {
   const lines = S.cart.lines.filter((l) => num(l.qty) > 0);
   if (!lines.length) return toast('ยังไม่มีรายการอะไหล่');
-  const custName = $('#sale-customer').value.trim() || 'เงินสด';
-  const cust = customerByName(custName);
+  const custText = $('#sale-customer').value.trim() || 'เงินสด';
+  const cust = customerByName(custText);
+  const custName = customerNameFor(custText);
   const total = round2(lines.reduce((s, l) => s + num(l.qty) * num(l.unit), 0));
   const discount = round2(num($('#sale-discount').value));
   if (discount > total) return toast('ส่วนลดมากกว่ายอดรวม');
@@ -743,7 +761,7 @@ function editBill(b) {
     return { code: l.code, name: l.name, model: l.model, qty: Math.abs(l.qty), unit: l.unit, listPrice: p ? num(p.price) : l.unit };
   });
   const box = openModal(`<h2>แก้ไขบิล ${esc(b.bill_no)}</h2>
-    <div class="row"><label>ลูกค้า<input id="ed-cus" list="customer-list" value="${esc(b.customer_name)}"></label>
+    <div class="row"><label>ลูกค้า<input id="ed-cus" list="customer-list" value="${esc((customerByName(b.customer_name) && customerLabel(customerByName(b.customer_name))) || b.customer_name)}"></label>
     <input id="ed-scan" placeholder="ยิงบาร์โค้ดเพื่อเพิ่มรายการ"></div>
     <table class="grid small" style="margin-top:8px"><thead><tr><th>รหัส</th><th>ชื่อ</th><th class="num">จำนวน</th><th class="num">หน่วยละ</th><th class="num">จำนวนเงิน</th><th></th></tr></thead><tbody id="ed-body"></tbody></table>
     <div class="row" style="justify-content:flex-end;margin-top:8px"><label>ส่วนลด<input id="ed-disc" type="number" step="0.01" value="${b.discount}"></label><b id="ed-net"></b></div>
@@ -770,11 +788,12 @@ function editBill(b) {
   render();
   $('#ed-save', box).onclick = async () => {
     if (!lines.length) return toast('บิลต้องมีอย่างน้อย 1 รายการ ถ้าจะลบทั้งบิลให้ใช้ "ยกเลิกบิล"');
-    const custName = $('#ed-cus', box).value.trim();
+    const custText = $('#ed-cus', box).value.trim();
+    const custName = customerNameFor(custText);
     const discount = round2(num($('#ed-disc', box).value));
     const ap = await askApproval('อนุมัติการแก้ไขบิล ' + b.bill_no, 'การแก้ไขจะถูกบันทึกประวัติไว้ทั้งก่อนและหลังแก้');
     if (!ap) return;
-    const cust = customerByName(custName);
+    const cust = customerByName(custText);
     const sign = b.type === 'คืน' ? -1 : 1;
     const newLines = lines.map((l, i) => ({ line: i + 1, code: l.code, name: l.name, model: l.model, qty: sign * l.qty, unit: l.unit, amount: round2(sign * l.qty * l.unit), status: 'ปกติ' }));
     const total = round2(newLines.reduce((s, l) => s + l.amount, 0));
@@ -1063,6 +1082,8 @@ function bindStatic() {
   };
   $('#sale-table').onclick = (e) => { const d = e.target.dataset.del; if (d != null) { S.cart.lines.splice(num(d), 1); renderCart(); } };
   $('#sale-discount').oninput = renderCart;
+  $('#sale-customer').onchange = (e) => { const c = customerByName(e.target.value); if (c) e.target.value = customerLabel(c); };
+  $('#sale-customer').onfocus = (e) => e.target.select();
   $('#btn-clear').onclick = () => { if (!S.cart.lines.length || confirm('ล้างรายการบนหน้าจอ?')) newSale(); };
   $('#btn-save').onclick = () => saveSale(false);
   $('#btn-save-print').onclick = () => saveSale(true);
