@@ -405,7 +405,15 @@ function customerForm(c) {
 
 /* ================================================================ เลขที่บิล */
 
-async function numberBlocks(branch) { return (await DB.kv.get('numbers:' + branch)) || []; }
+// เลขที่จองไว้ต้องขึ้นต้นตามรูปแบบปัจจุบัน (เช่น PA69) ถ้าเปลี่ยนรูปแบบ เลขเก่าในเครื่องจะถูกทิ้ง
+function numberPrefix(branch) {
+  const pre = S.settings && 'bill_prefix' in S.settings ? String(S.settings.bill_prefix).trim().toUpperCase() : 'P';
+  return pre + branchInfo(branch).letter;
+}
+async function numberBlocks(branch) {
+  const head = numberPrefix(branch);
+  return ((await DB.kv.get('numbers:' + branch)) || []).filter((b) => b.prefix.indexOf(head) === 0 && /^\d{2}$/.test(b.prefix.slice(head.length)));
+}
 function remaining(blocks) { return blocks.reduce((s, b) => s + (b.end - b.next + 1), 0); }
 
 async function ensureNumbers(branch) {
