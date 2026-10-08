@@ -600,7 +600,7 @@ async function newSale() {
   $('#sale-customer').value = (customerByName('เงินสด') && customerLabel(customerByName('เงินสด'))) || 'เงินสด';
   $('#sale-discount').value = 0;
   $('#sale-discount-pct').value = 0;
-  $('#sale-deposit').checked = false;
+  $('#sale-deposit').checked = false; $('#sale-pay [value="เงินสด"]').checked = true; $('#sale-payref').value = ''; $('#sale-payref').disabled = true;
   $('#scan-msg').textContent = '';
   renderCart();
   await ensureNumbers(S.branch);
@@ -733,12 +733,15 @@ async function saveSale(print) {
     if (!ap) return;
   }
   const order = { order_type: $('#sale-deposit').checked ? DEPOSIT : '', paid: '' };
+  const pay = payPicker($('#sale-pay'));
+  if (pay.pay_method === 'โอนเงิน' && !pay.pay_ref && !confirm('ยังไม่ได้ใส่รายละเอียดการโอน จะบันทึกต่อเลยไหม?')) return $('#sale-payref').focus();
   let no;
   try { no = await takeNumber(S.branch); } catch (e) { return toast(e.message, 6000); }
   const bill = {
     bill_no: no, branch: S.branch, date: $('#sale-date').value || todayISO(), time: nowTime(), type: 'ขาย', ref_bill: '',
     customer_id: cust ? cust.id : '', customer_name: custName, total, discount, net: round2(total - discount), status: 'ปกติ',
     created_by: S.user.username, created_at: nowISO(), note: '', order_type: order.order_type, paid: order.paid,
+    pay_method: pay.pay_method, pay_ref: pay.pay_ref, approved_by: ap ? ap.approval.approver : '',
     lines: lines.map((l, i) => ({ line: i + 1, code: l.code, name: l.name, model: l.model, qty: num(l.qty), unit: num(l.unit), amount: round2(num(l.qty) * num(l.unit)) }))
   };
   await DB.put('bills', Object.assign({ _sync: 'pending' }, bill));
@@ -756,6 +759,23 @@ async function saveSale(print) {
 // ทุกบิลรับเงินครบ ไม่มีค้างจ่าย สั่งด่วน/สั่งรายสัปดาห์ เลิกใช้แล้ว แต่บิลเก่ายังแสดงชื่อเดิม
 const DEPOSIT = 'มัดจำรอของ';
 const ORDER_LABEL = { [DEPOSIT]: 'มัดจำจ่ายเงินแล้วรอของ', 'สั่งด่วน': 'รายการอะไหล่สั่งด่วน', 'สั่งรายสัปดาห์': 'รายการสั่งรายสัปดาห์' };
+// วิธีชำระเงิน: เงินสด / โอนเงิน + รายละเอียดที่พนักงานพิมพ์เอง
+function payPicker(scope) {
+  const method = (scope.querySelector('input[type=radio]:checked') || {}).value || 'เงินสด';
+  const ref = scope.querySelector('.payref');
+  ref.disabled = method !== 'โอนเงิน';
+  return { pay_method: method, pay_ref: method === 'โอนเงิน' ? ref.value.trim() : '' };
+}
+function payText(b) {
+  if (!b || !b.pay_method) return '';
+  return b.pay_method + (b.pay_method === 'โอนเงิน' && b.pay_ref ? ' (' + b.pay_ref + ')' : '');
+}
+function payPickerHtml(name, b) {
+  const m = (b && b.pay_method) || 'เงินสด';
+  return `<div class="order-opts" id="${name}"><span>ชำระโดย</span>
+    ${['เงินสด', 'โอนเงิน'].map((v) => `<label><input type="radio" name="${name}" value="${v}" ${m === v ? 'checked' : ''}> ${v}</label>`).join('')}
+    <input class="payref" placeholder="รายละเอียดการโอน" value="${esc((b && b.pay_ref) || '')}" ${m === 'โอนเงิน' ? '' : 'disabled'}></div>`;
+}
 function orderText(b, long = true) {
   if (!b || !b.order_type) return '';
   return long ? ORDER_LABEL[b.order_type] || b.order_type : b.order_type;
@@ -773,6 +793,7 @@ function receiptHtml(bill, copy) {
   let body = '';
   // ช่องหมายเหตุ: แถวแรก "จ่ายเงินวันที่" ตามแบบเดิม ต่อด้วยประเภทการสั่งและยอดที่จ่ายแล้ว
   const notes = [isRet ? '' : 'จ่ายเงินวันที่'];
+  if (!isRet && bill.pay_method) notes.push(`ชำระโดย <b>${esc(bill.pay_method)}</b>`, ...(bill.pay_method === 'โอนเงิน' && bill.pay_ref ? [esc(bill.pay_ref)] : []));
   if (bill.order_type) notes.push(`<b>${esc(orderText(bill))}</b>`);
   for (let i = 0; i < rows; i++) {
     const l = lines[i], n = notes[i] || '';
@@ -835,7 +856,7 @@ async function openBill(no) {
   const box = openModal(`<h2>บิล ${esc(b.bill_no)} ${b.type === 'คืน' ? '<span class="badge ret">บิลคืน</span>' : ''}
       ${b.status === 'ยกเลิก' ? '<span class="badge void">ยกเลิก</span>' : ''} ${syncBadge}</h2>
     <p>สาขา ${esc(branchInfo(b.branch).name)} · วันที่ ${thDate(b.date)} ${esc(b.time || '')} · ลูกค้า <b>${esc(b.customer_name)}</b> · ผู้ขาย ${esc(b.created_by)}
-      ${b.ref_bill ? ' · อ้างอิง ' + esc(b.ref_bill) : ''}${b.approved_by ? ' · อนุมัติโดย ' + esc(b.approved_by) : ''}</p>
+      ${b.ref_bill ? ' · อ้างอิง ' + esc(b.ref_bill) : ''}${b.approved_by ? ' · อนุมัติโดย ' + esc(b.approved_by) : ''}${b.pay_method ? ' · ชำระโดย ' + esc(payText(b)) : ''}</p>
     ${b.note ? `<p class="muted">${esc(b.note)}</p>` : ''}
     <table class="grid small"><thead><tr><th>รหัส</th><th>ชื่อ</th><th>รุ่น</th><th class="num">จำนวน</th><th class="num">หน่วยละ</th><th class="num">จำนวนเงิน</th></tr></thead>
     <tbody>${(b.lines || []).map((l) => `<tr class="${l.status === 'ยกเลิก' ? 'void' : ''}"><td>${esc(l.code)}</td><td>${esc(l.name)}</td><td>${esc(l.model)}</td><td class="num">${l.qty}</td><td class="num">${money(l.unit)}</td><td class="num">${money(l.amount)}</td></tr>`).join('')}</tbody></table>
@@ -866,7 +887,7 @@ function editBill(b) {
     <table class="grid small" style="margin-top:8px"><thead><tr><th>รหัส</th><th>ชื่อ</th><th class="num">จำนวน</th><th class="num">หน่วยละ</th><th class="num">จำนวนเงิน</th><th></th></tr></thead><tbody id="ed-body"></tbody></table>
     <div class="row" style="justify-content:flex-end;margin-top:8px"><label>ส่วนลด<input id="ed-disc" type="number" step="0.01" value="${b.discount}"></label><b id="ed-net"></b></div>
     ${b.type === 'คืน' ? '' : `<div class="order-opts" id="ed-order"><span>หมายเหตุ</span>
-      <label><input type="checkbox" id="ed-deposit" ${b.order_type === DEPOSIT ? 'checked' : ''}> ${ORDER_LABEL[DEPOSIT]}</label></div>`}
+      <label><input type="checkbox" id="ed-deposit" ${b.order_type === DEPOSIT ? 'checked' : ''}> ${ORDER_LABEL[DEPOSIT]}</label></div>${payPickerHtml('ed-pay', b)}`}
     <div class="actions"><button data-close>ยกเลิก</button><button class="primary" id="ed-save">บันทึกการแก้ไข (ต้องมีรหัสแอดมิน)</button></div>`);
   const render = () => {
     $('#ed-body', box).innerHTML = lines.map((l, i) => `<tr><td>${esc(l.code)}</td><td>${esc(l.name)}</td>
@@ -879,6 +900,7 @@ function editBill(b) {
   $('#ed-body', box).onchange = (e) => { const i = e.target.dataset.i; if (i != null) { lines[i][e.target.dataset.f] = num(e.target.value); setTimeout(render); } };
   $('#ed-body', box).onclick = (e) => { const d = e.target.dataset.del; if (d != null) { lines.splice(num(d), 1); render(); } };
   $('#ed-disc', box).oninput = render;
+  if ($('#ed-pay', box)) $('#ed-pay', box).onchange = () => payPicker($('#ed-pay', box));
   $('#ed-scan', box).onkeydown = (e) => {
     if (e.key !== 'Enter') return;
     const p = findPart(e.target.value);
@@ -897,6 +919,7 @@ function editBill(b) {
     // ติ๊กมัดจำ = มัดจำรอของ, ไม่ติ๊ก = ปกติ (บิลเก่าที่เป็นสั่งด่วน/สั่งรายสัปดาห์ ถ้าไม่แตะ ให้คงไว้ตามเดิม)
     const order = !dep || (!dep.checked && b.order_type && b.order_type !== DEPOSIT) ? { order_type: b.order_type || '', paid: b.paid }
       : { order_type: dep.checked ? DEPOSIT : '', paid: '' };
+    const pay = $('#ed-pay', box) ? payPicker($('#ed-pay', box)) : { pay_method: b.pay_method || '', pay_ref: b.pay_ref || '' };
     const ap = await askApproval('อนุมัติการแก้ไขบิล ' + b.bill_no, 'การแก้ไขจะถูกบันทึกประวัติไว้ทั้งก่อนและหลังแก้');
     if (!ap) return;
     const cust = customerByName(custText);
@@ -904,9 +927,9 @@ function editBill(b) {
     const newLines = lines.map((l, i) => ({ line: i + 1, code: l.code, name: l.name, model: l.model, qty: sign * l.qty, unit: l.unit, amount: round2(sign * l.qty * l.unit), status: 'ปกติ' }));
     const total = round2(newLines.reduce((s, l) => s + l.amount, 0));
     await enqueue({ type: 'editBill', bill_no: b.bill_no, lines: lines.map((l) => ({ code: l.code, name: l.name, model: l.model, qty: l.qty, unit: l.unit })),
-      discount, customer_name: custName, customer_id: cust ? cust.id : '', order_type: order.order_type, paid: order.paid, approval: ap.approval, reason: ap.reason });
+      discount, customer_name: custName, customer_id: cust ? cust.id : '', order_type: order.order_type, paid: order.paid, pay_method: pay.pay_method, pay_ref: pay.pay_ref, approval: ap.approval, reason: ap.reason });
     Object.assign(b, { lines: newLines, total, discount, net: round2(total - discount), customer_name: custName, customer_id: cust ? cust.id : '',
-      order_type: order.order_type, paid: order.paid,
+      order_type: order.order_type, paid: order.paid, pay_method: pay.pay_method, pay_ref: pay.pay_ref,
       approved_by: ap.approval.approver, note: 'แก้ไข: ' + ap.reason, _sync: 'pending' });
     await DB.put('bills', b);
     toast('บันทึกการแก้ไขแล้ว');
@@ -1289,7 +1312,7 @@ function renderReport() {
     return `<tr class="clickable ${cls}" data-bill="${esc(b.bill_no)}"><td>${first ? esc(b.bill_no) : ''}</td><td>${first ? thDate(b.date) : ''}</td>
       <td>${esc(l.code)}</td><td>${esc(l.name)}</td><td>${esc(l.model)}</td><td class="num">${l.qty}</td><td class="num">${money(l.unit)}</td><td class="num">${money(l.amount)}</td>
       <td>${first ? esc(b.customer_name) : ''}</td><td class="num">${first ? money(b.total) : ''}</td><td class="num">${first ? money(b.discount) : ''}</td>
-      <td class="num">${first ? money(b.net) : ''}</td><td>${first ? st + sync : ''}</td><td>${first ? esc(orderText(b, false)) : ''}</td></tr>`;
+      <td class="num">${first ? money(b.net) : ''}</td><td>${first ? st + sync : ''}</td><td>${first ? esc([payText(b), orderText(b, false)].filter(Boolean).join(' · ')) : ''}</td></tr>`;
   }).join('') || '<tr><td colspan="14" class="muted">ไม่มีบิล</td></tr>';
 }
 
@@ -1299,15 +1322,15 @@ function exportExcel() {
   if (!window.XLSX) return toast('ตัวสร้าง Excel ยังโหลดไม่เสร็จ ลองใหม่อีกครั้ง');
   const pending = R.bills.filter((b) => b._sync === 'pending').length;
   if (pending && !confirm(`มี ${pending} บิลที่ยังไม่ได้ส่งขึ้นระบบ จะดาวน์โหลดรวมไว้ด้วยไหม?`)) return;
-  const head = ['ใบเสร็จเลขที่', 'วันที่', 'รหัสอะไหล่', 'ชื่ออะไหล่', 'รุ่น', 'จำนวน', 'หน่วยละ', 'จำนวนเงิน', 'ชื่อผู้ซื้อ', 'รวมเงิน', 'ส่วนลด', 'เหลือ', 'สาขา', 'ประเภท', 'อ้างอิงบิล'];
+  const head = ['ใบเสร็จเลขที่', 'วันที่', 'รหัสอะไหล่', 'ชื่ออะไหล่', 'รุ่น', 'จำนวน', 'หน่วยละ', 'จำนวนเงิน', 'ชื่อผู้ซื้อ', 'รวมเงิน', 'ส่วนลด', 'เหลือ', 'สาขา', 'ประเภท', 'อ้างอิงบิล', 'ชำระโดย', 'รายละเอียดการโอน', 'หมายเหตุ', 'ผู้อนุมัติ'];
   const data = [head];
   reportRows(R.bills, false).forEach(({ b, l, first }) => {
     data.push([b.bill_no, thDate(b.date), l.code, l.name, l.model, num(l.qty), round2(num(l.unit)), round2(num(l.amount)),
       first ? b.customer_name : '', first ? round2(num(b.total)) : '', first ? round2(num(b.discount)) : '', first ? round2(num(b.net)) : '',
-      branchInfo(b.branch).name, b.type, b.ref_bill || '']);
+      branchInfo(b.branch).name, b.type, b.ref_bill || '', b.pay_method || '', b.pay_ref || '', orderText(b), b.approved_by || '']);
   });
   const ws = XLSX.utils.aoa_to_sheet(data);
-  ws['!cols'] = [12, 11, 18, 34, 16, 7, 10, 11, 26, 10, 9, 10, 12, 7, 12].map((w) => ({ wch: w }));
+  ws['!cols'] = [12, 11, 18, 34, 16, 7, 10, 11, 26, 10, 9, 10, 12, 7, 12, 9, 26, 20, 10].map((w) => ({ wch: w }));
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'บันทึกขายอะไหล่');
   const bname = R.branch === '*' ? 'ทุกสาขา' : branchInfo(R.branch).name;
@@ -1339,7 +1362,7 @@ function controlSheetHtml(R) {
     const [date, branch] = k.split('|'), bills = days.get(k);
     const blocks = new Map();
     bills.slice().sort((a, b) => (a.bill_no < b.bill_no ? -1 : 1)).forEach((b) => { const g = billBlock(b.bill_no); if (!blocks.has(g)) blocks.set(g, []); blocks.get(g).push(b); });
-    const T = { net: 0, cash: 0, n: 0, void: 0, ret: 0, gaps: 0 };
+    const T = { net: 0, cash: 0, money: 0, transfer: 0, n: 0, void: 0, ret: 0, gaps: 0 };
     let i = 0, devNo = 0;
     const body = Array.from(blocks.values()).map((list) => {
       devNo++;
@@ -1349,32 +1372,34 @@ function controlSheetHtml(R) {
         const seq = billSeq(b.bill_no);
         if (prev != null && seq - prev > 1) {
           const miss = seq - prev - 1; T.gaps += miss;
-          rows += `<tr class="cs-gap"><td></td><td colspan="8">⚠ ไม่พบเลข ${esc(String(b.bill_no).slice(0, -5) + pad(prev + 1, 5))}${miss > 1 ? ' ถึง ' + esc(String(b.bill_no).slice(0, -5) + pad(seq - 1, 5)) : ''} (${miss} เลข) ให้ตรวจสอบเครื่องว่าส่งข้อมูลครบหรือไม่</td></tr>`;
+          rows += `<tr class="cs-gap"><td></td><td colspan="10">⚠ ไม่พบเลข ${esc(String(b.bill_no).slice(0, -5) + pad(prev + 1, 5))}${miss > 1 ? ' ถึง ' + esc(String(b.bill_no).slice(0, -5) + pad(seq - 1, 5)) : ''} (${miss} เลข) ให้ตรวจสอบเครื่องว่าส่งข้อมูลครบหรือไม่</td></tr>`;
         }
         prev = seq;
         const c = billCash(b), dead = b.status === 'ยกเลิก', ret = b.type === 'คืน';
-        if (dead) T.void++; else { T.n++; if (ret) T.ret++; S2.net += ret ? -num(b.net) : num(b.net); S2.cash += c; }
+        if (dead) T.void++; else { T.n++; if (ret) T.ret++; S2.net += ret ? -num(b.net) : num(b.net); S2.cash += c; if (b.pay_method === 'โอนเงิน') T.transfer += c; else T.money += c; }
         const kind = dead ? 'ยกเลิก' : ret ? 'คืน' + (b.ref_bill ? ' (' + esc(b.ref_bill) + ')' : '') : b.order_type ? esc(orderText(b)) : 'ขายสด';
         rows += `<tr class="${dead ? 'cs-void' : ''}"><td class="c">${++i}</td><td>${esc(b.bill_no)}</td><td>${esc(b.time || '')}</td><td>${esc(b.customer_name)}</td><td>${kind}</td>
+          <td>${esc(b.pay_method || (ret ? '' : 'เงินสด'))}${b.pay_method === 'โอนเงิน' && b.pay_ref ? `<div class="cs-ref">${esc(b.pay_ref)}</div>` : ''}</td>
           <td class="num">${dead ? '-' : money(ret ? -num(b.net) : b.net)}</td><td class="num">${dead ? '-' : money(c)}</td>
-          <td>${esc(b.created_by || '')}</td><td></td></tr>`;
+          <td>${esc(b.created_by || '')}</td><td>${esc(b.approved_by || '')}</td><td></td></tr>`;
       });
       T.net += S2.net; T.cash += S2.cash;
       const users = Array.from(new Set(list.map((b) => b.created_by).filter(Boolean))).join(', ');
-      return `<tr class="cs-dev"><td colspan="9">เครื่องที่ ${devNo} · ชุดเลข ${esc(blockLabel(list[0].bill_no))} · ${list.length} บิล${users ? ' · ผู้ขาย ' + esc(users) : ''}</td></tr>${rows}
-        <tr class="cs-sub"><td colspan="5">รวมเครื่องที่ ${devNo}</td><td class="num">${money(S2.net)}</td><td class="num">${money(S2.cash)}</td><td colspan="2"></td></tr>`;
+      return `<tr class="cs-dev"><td colspan="11">เครื่องที่ ${devNo} · ชุดเลข ${esc(blockLabel(list[0].bill_no))} · ${list.length} บิล${users ? ' · ผู้ขาย ' + esc(users) : ''}</td></tr>${rows}
+        <tr class="cs-sub"><td colspan="6">รวมเครื่องที่ ${devNo}</td><td class="num">${money(S2.net)}</td><td class="num">${money(S2.cash)}</td><td colspan="3"></td></tr>`;
     }).join('');
     const br = branchInfo(branch);
     return `<div class="cs-doc">
       <div class="cs-head"><div><div class="cs-title">ใบคุมบิลขายอะไหล่ประจำวัน</div><div>${esc(S.settings.shop_name || 'หจก.ประสบชัยกลการ')} · ${esc(branchTitle(br))}</div></div>
         <div class="cs-date">วันที่ <b>${thDate(date)}</b></div></div>
-      <table class="cs-table"><thead><tr><th>#</th><th>เลขที่บิล</th><th>เวลา</th><th>ลูกค้า</th><th>ประเภท</th><th class="num">ยอดบิล</th><th class="num">รับเงิน</th><th>ผู้ขาย</th><th>ตรวจ</th></tr></thead>
+      <table class="cs-table"><thead><tr><th>#</th><th>เลขที่บิล</th><th>เวลา</th><th>ลูกค้า</th><th>ประเภท</th><th>ชำระโดย</th><th class="num">ยอดบิล</th><th class="num">รับเงิน</th><th>ผู้ขาย</th><th>ผู้อนุมัติ</th><th>ตรวจ</th></tr></thead>
       <tbody>${body}</tbody></table>
       <div class="cs-sum">
         <div><span>บิลใช้งาน</span><b>${T.n}</b></div><div><span>บิลคืน</span><b>${T.ret}</b></div><div><span>ยกเลิก</span><b>${T.void}</b></div><div><span>เลขที่หายไป</span><b>${T.gaps}</b></div>
-        <div><span>ยอดขายสุทธิ</span><b>${money(T.net)}</b></div><div class="big"><span>เงินที่ต้องส่ง</span><b>${money(T.cash)}</b></div>
+        <div><span>ยอดขายสุทธิ</span><b>${money(T.net)}</b></div><div><span>รับโอนเงิน</span><b>${money(T.transfer)}</b></div>
+        <div><span>รับเงินรวม</span><b>${money(T.cash)}</b></div><div class="big"><span>เงินสดที่ต้องส่ง</span><b>${money(T.money)}</b></div>
       </div>
-      <div class="cs-count">นับเงินได้จริง ...................................... บาท &nbsp;&nbsp; ขาด/เกิน ...................................... บาท</div>
+      <div class="cs-count">นับเงินสดได้จริง ...................................... บาท &nbsp;&nbsp; ขาด/เกิน ...................................... บาท</div>
       <div class="cs-sign"><div>ลงชื่อ ......................................................<br>ผู้ส่งเงิน</div><div>ลงชื่อ ......................................................<br>ฝ่ายบัญชีผู้รับเงิน</div></div>
     </div>`;
   }).join('');
@@ -1623,6 +1648,7 @@ function bindStatic() {
 
   // รายงาน
   $('#btn-rep-load').onclick = loadReport;
+  $('#sale-pay').onchange = () => { const p = payPicker($('#sale-pay')); if (p.pay_method === 'โอนเงิน') $('#sale-payref').focus(); };
   $('#btn-rep-control').onclick = printControlSheet;
   $('#btn-rep-excel').onclick = exportExcel;
   $('#rep-table').onclick = (e) => { const tr = e.target.closest('[data-bill]'); if (tr) openBill(tr.dataset.bill); };

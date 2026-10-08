@@ -179,7 +179,7 @@ button.alt { background: #2e7d4f; border-color: #2e7d4f; }
 @media print { .est-doc { box-shadow: none !important; padding: 0 !important; min-height: 277mm; } }
 
 /* ---------------------------------------------------------------- ใบคุมบิลรายวัน (พิมพ์ A4) */
-.cs-doc { width: 190mm; color: #111; font-size: 12px; background: #fff; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+.cs-doc { width: 190mm; color: #111; font-size: 11px; background: #fff; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 .cs-doc + .cs-doc { break-before: page; page-break-before: always; }
 .cs-head { display: flex; justify-content: space-between; align-items: flex-end; border-bottom: 3px solid #1f4e79; padding-bottom: 2mm; margin-bottom: 3mm; }
 .cs-title { font-size: 18px; font-weight: 700; color: #1f4e79; }
@@ -202,3 +202,7 @@ button.alt { background: #2e7d4f; border-color: #2e7d4f; }
 .cs-sum .big b { font-size: 15px; color: #1f4e79; }
 .cs-count { margin: 6mm 0; }
 .cs-sign { display: flex; justify-content: space-around; text-align: center; margin-top: 12mm; line-height: 2; }
+
+.cs-ref { font-size: 9.5px; color: #555; max-width: 30mm; word-break: break-word; }
+.order-opts .payref { flex: 1 1 260px; min-width: 200px; }
+.order-opts .payref:disabled { opacity: .45; }

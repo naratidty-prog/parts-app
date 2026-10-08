@@ -65,6 +65,12 @@
         <span>หมายเหตุ</span>
         <label><input type="checkbox" id="sale-deposit"> มัดจำจ่ายเงินแล้วรอของ</label>
       </div>
+      <div class="order-opts" id="sale-pay">
+        <span>ชำระโดย</span>
+        <label><input type="radio" name="sale-pay" value="เงินสด" checked> เงินสด</label>
+        <label><input type="radio" name="sale-pay" value="โอนเงิน"> โอนเงิน</label>
+        <input id="sale-payref" class="payref" placeholder="รายละเอียดการโอน เช่น ธนาคาร / เวลา / เลขอ้างอิง" disabled>
+      </div>
     </div>
     <div class="scan card">
       <input id="scan-input" placeholder="ยิงบาร์โค้ด หรือพิมพ์รหัสอะไหล่ แล้วกด Enter" autocomplete="off">
