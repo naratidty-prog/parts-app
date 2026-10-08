@@ -171,7 +171,21 @@ function closeModal() { $('#modal').classList.add('hidden'); $('#modal-box').inn
 
 /* ================================================================ เริ่มต้น */
 
+// หน้า index.html กับ app.js ต้องเป็นรุ่นเดียวกัน ถ้าเบราว์เซอร์ยังจำหน้าเก่าไว้ ให้โหลดใหม่เอง (ไม่เกิน 3 ครั้ง)
+const APP_BUILD = '17';
+function buildMismatch() {
+  const m = document.querySelector('meta[name="app-build"]');
+  if (m && m.content === APP_BUILD) { try { sessionStorage.removeItem('reloadTry'); } catch (e) { /* */ } return false; }
+  let n = 0;
+  try { n = Number(sessionStorage.getItem('reloadTry') || 0); sessionStorage.setItem('reloadTry', n + 1); } catch (e) { n = 3; }
+  document.body.innerHTML = '<p style="padding:24px;font-size:18px">กำลังอัปเดตแอปเป็นรุ่นใหม่ กรุณารอสักครู่…</p>'
+    + (n >= 3 ? '<p style="padding:0 24px;color:#b3261e">ถ้าหน้านี้ไม่หายไป ให้กด Ctrl+Shift+R หรือปิดแท็บแล้วเปิดลิงก์ใหม่</p>' : '');
+  if (n < 3) setTimeout(() => location.replace(location.pathname + '?r=' + Date.now()), 1500);
+  return true;
+}
+
 async function boot() {
+  if (buildMismatch()) { if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {}); return; }
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
   await DB.open();
   const cfgUrl = window.APP_CONFIG && window.APP_CONFIG.API_URL;
@@ -1488,6 +1502,11 @@ function creditListHtml(list, asOf) {
 }
 
 async function loadControl() {
+  try { await loadControlInner(); } catch (e) { $('#ctl-msg').textContent = 'โหลดใบคุมไม่ได้: ' + e.message; }
+}
+
+async function loadControlInner() {
+  if (!$('#ctl-branch').options.length && S.branches.length) fillBranchSelects();
   const date = $('#ctl-date').value || todayISO();
   const branch = isAdmin() ? $('#ctl-branch').value || S.branch : S.user.branch;
   $('#ctl-msg').textContent = 'กำลังโหลด…';
@@ -1663,7 +1682,7 @@ function switchTab(name) {
   if (name === 'report' && !S.report) { $('#rep-from').value = $('#rep-from').value || todayISO(); $('#rep-to').value = $('#rep-to').value || todayISO(); loadReport(); }
   if (name === 'print' && S.printBill) renderPrintPreview(S.printBill);
   if (name === 'admin') loadAudit();
-  if (name === 'control' && !$('#ctl-date').value) { $('#ctl-date').value = todayISO(); loadControl(); }
+  if (name === 'control') { if (!$('#ctl-date').value) $('#ctl-date').value = todayISO(); loadControl(); }
   if (name === 'estimate') { if (!S.est || S.est.branch !== S.branch) newEstimate(); $('#est-scan').focus(); }
 }
 
