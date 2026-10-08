@@ -177,3 +177,28 @@ button.alt { background: #2e7d4f; border-color: #2e7d4f; }
 .est-doc .ed-sign { display: flex; justify-content: space-around; margin-top: auto; padding-top: 14mm; text-align: center; }
 .est-doc .ed-sign .line { width: 62mm; border-bottom: 1px dotted #333; margin-bottom: 1.5mm; height: 8mm; }
 @media print { .est-doc { box-shadow: none !important; padding: 0 !important; min-height: 277mm; } }
+
+/* ---------------------------------------------------------------- ใบคุมบิลรายวัน (พิมพ์ A4) */
+.cs-doc { width: 190mm; color: #111; font-size: 12px; background: #fff; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+.cs-doc + .cs-doc { break-before: page; page-break-before: always; }
+.cs-head { display: flex; justify-content: space-between; align-items: flex-end; border-bottom: 3px solid #1f4e79; padding-bottom: 2mm; margin-bottom: 3mm; }
+.cs-title { font-size: 18px; font-weight: 700; color: #1f4e79; }
+.cs-date { font-size: 14px; }
+.cs-table { width: 100%; border-collapse: collapse; }
+.cs-table th { background: #1f4e79; color: #fff; font-weight: 600; padding: 1.5mm; border: 1px solid #1f4e79; }
+.cs-table td { border: 1px solid #c9d6e3; padding: 1.2mm 1.5mm; }
+.cs-table td.c { text-align: center; }
+.cs-table .num { text-align: right; white-space: nowrap; }
+.cs-table td:last-child { width: 12mm; }
+.cs-dev td { background: #e8f0f8; font-weight: 700; color: #1f4e79; }
+.cs-sub td { background: #f4f7fa; font-weight: 700; }
+.cs-void td { color: #999; text-decoration: line-through; }
+.cs-gap td { background: #fff4e5; color: #a15c00; font-size: 11px; }
+.cs-sum { display: grid; grid-template-columns: repeat(4, 1fr); gap: 2mm; margin: 4mm 0; }
+.cs-sum div { border: 1px solid #c9d6e3; border-radius: 2mm; padding: 1.5mm 3mm; display: flex; justify-content: space-between; }
+.cs-sum span { color: #555; font-size: 12px; white-space: nowrap; }
+.cs-sum div { align-items: center; }
+.cs-sum .big { border: 2px solid #1f4e79; background: #e8f0f8; }
+.cs-sum .big b { font-size: 15px; color: #1f4e79; }
+.cs-count { margin: 6mm 0; }
+.cs-sign { display: flex; justify-content: space-around; text-align: center; margin-top: 12mm; line-height: 2; }

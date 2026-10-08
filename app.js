@@ -600,7 +600,7 @@ async function newSale() {
   $('#sale-customer').value = (customerByName('เงินสด') && customerLabel(customerByName('เงินสด'))) || 'เงินสด';
   $('#sale-discount').value = 0;
   $('#sale-discount-pct').value = 0;
-  $('#sale-order [value=""]').checked = true; $('#sale-paid').value = '';
+  $('#sale-deposit').checked = false;
   $('#scan-msg').textContent = '';
   renderCart();
   await ensureNumbers(S.branch);
@@ -643,7 +643,6 @@ function renderCart() {
     + (total ? ` · บิลนี้ลดได้สูงสุด <b>${money(allowed)}</b> บาท` : '')
     + (odd ? ` (มีอะไหล่ ${odd} รายการที่ลดได้น้อยกว่าปกติ)` : '')
     + (disc > allowed + 0.001 ? ' <span class="err">เกิน ต้องให้แอดมินอนุมัติ</span>' : '');
-  orderPicker($('#sale-order'), 'sale-order', total - disc);
   $('#sale-total').textContent = money(total);
   $('#sale-net').textContent = money(total - disc);
   $('#sale-bahttext').textContent = S.cart.lines.length ? '(' + bahtText(total - disc) + ')' : '';
@@ -733,8 +732,7 @@ async function saveSale(print) {
     ap = await askApproval('ต้องให้แอดมินอนุมัติ', esc(why), false);
     if (!ap) return;
   }
-  const order = orderPicker($('#sale-order'), 'sale-order', total - discount);
-  if (order.order_type && num(order.paid) > total - discount + 0.001) return toast('ยอดจ่ายแล้วมากกว่ายอดบิล');
+  const order = { order_type: $('#sale-deposit').checked ? DEPOSIT : '', paid: '' };
   let no;
   try { no = await takeNumber(S.branch); } catch (e) { return toast(e.message, 6000); }
   const bill = {
@@ -753,24 +751,14 @@ async function saveSale(print) {
   newSale();
 }
 
-/* ================================================================ หมายเหตุใบเบิก (สั่งด่วน / สั่งรายสัปดาห์ + จ่ายแล้ว) */
+/* ================================================================ หมายเหตุใบเบิก (มัดจำจ่ายเงินแล้วรอของ) */
 
-const ORDER_LABEL = { 'สั่งด่วน': 'รายการอะไหล่สั่งด่วน', 'สั่งรายสัปดาห์': 'รายการสั่งรายสัปดาห์' };
+// ทุกบิลรับเงินครบ ไม่มีค้างจ่าย สั่งด่วน/สั่งรายสัปดาห์ เลิกใช้แล้ว แต่บิลเก่ายังแสดงชื่อเดิม
+const DEPOSIT = 'มัดจำรอของ';
+const ORDER_LABEL = { [DEPOSIT]: 'มัดจำจ่ายเงินแล้วรอของ', 'สั่งด่วน': 'รายการอะไหล่สั่งด่วน', 'สั่งรายสัปดาห์': 'รายการสั่งรายสัปดาห์' };
 function orderText(b, long = true) {
   if (!b || !b.order_type) return '';
-  const paid = num(b.paid);
-  return (long ? ORDER_LABEL[b.order_type] || b.order_type : b.order_type) + ' » จ่ายเงินแล้ว ' + money(paid) + ' บาท'
-    + (b.type !== 'คืน' ? ' · ค้างจ่าย ' + money(num(b.net) - paid) : '');
-}
-// ตัวเลือกประเภทการสั่งในหน้าขาย/หน้าแก้ไขบิล: กด "ปกติ" แล้วช่องจ่ายเงินจะปิด
-function orderPicker(scope, name, net) {
-  const type = (scope.querySelector(`[name="${name}"]:checked`) || {}).value || '';
-  const paid = scope.querySelector('.paid input');
-  paid.disabled = !type;
-  if (!type) paid.value = '';
-  const owe = scope.querySelector('.owe, #sale-owe');
-  if (owe) owe.textContent = type && paid.value !== '' ? 'ค้างจ่าย ' + money(net - num(paid.value)) + ' บาท' : '';
-  return { order_type: type, paid: type ? round2(num(paid.value)) : '' };
+  return long ? ORDER_LABEL[b.order_type] || b.order_type : b.order_type;
 }
 
 /* ================================================================ ใบเสร็จ */
@@ -778,13 +766,14 @@ function orderPicker(scope, name, net) {
 function receiptHtml(bill, copy) {
   const c = S.customers.find((x) => x.id === bill.customer_id);
   const isRet = bill.type === 'คืน';
-  const title = isRet ? 'ใบคืนอะไหล่' : (S.settings.receipt_title || 'ใบเบิกอะไหล่');
+  // ทุกบิลรับเงินครบแล้ว ตัดคำว่า (ค้างจ่าย) ที่อาจค้างอยู่ในชีต Settings ออก
+  const title = isRet ? 'ใบคืนอะไหล่' : String(S.settings.receipt_title || 'ใบเบิกอะไหล่').replace(/\s*\(?ค้างจ่าย\)?/g, '').trim() || 'ใบเบิกอะไหล่';
   const lines = bill.lines || [];
   const rows = Math.max(15, lines.length);
   let body = '';
   // ช่องหมายเหตุ: แถวแรก "จ่ายเงินวันที่" ตามแบบเดิม ต่อด้วยประเภทการสั่งและยอดที่จ่ายแล้ว
   const notes = [isRet ? '' : 'จ่ายเงินวันที่'];
-  if (bill.order_type) notes.push(`<b>${esc(bill.order_type)}</b>`, 'จ่ายแล้ว ' + money(bill.paid), 'ค้าง ' + money(num(bill.net) - num(bill.paid)));
+  if (bill.order_type) notes.push(`<b>${esc(orderText(bill))}</b>`);
   for (let i = 0; i < rows; i++) {
     const l = lines[i], n = notes[i] || '';
     body += l ? `<tr><td class="num">${l.qty}</td><td>${esc(l.code)}</td><td>${esc(l.name)}</td><td>${esc(l.model)}</td><td class="num">${money(l.unit)}</td><td class="num">${money(l.amount)}</td><td class="r-memo">${n}</td></tr>`
@@ -877,8 +866,7 @@ function editBill(b) {
     <table class="grid small" style="margin-top:8px"><thead><tr><th>รหัส</th><th>ชื่อ</th><th class="num">จำนวน</th><th class="num">หน่วยละ</th><th class="num">จำนวนเงิน</th><th></th></tr></thead><tbody id="ed-body"></tbody></table>
     <div class="row" style="justify-content:flex-end;margin-top:8px"><label>ส่วนลด<input id="ed-disc" type="number" step="0.01" value="${b.discount}"></label><b id="ed-net"></b></div>
     ${b.type === 'คืน' ? '' : `<div class="order-opts" id="ed-order"><span>หมายเหตุ</span>
-      ${['', 'สั่งด่วน', 'สั่งรายสัปดาห์'].map((v) => `<label><input type="radio" name="ed-order" value="${v}" ${(b.order_type || '') === v ? 'checked' : ''}> ${v ? ORDER_LABEL[v] : 'ปกติ'}</label>`).join('')}
-      <label class="paid">จ่ายเงินแล้ว<input type="number" step="0.01" min="0" value="${b.order_type && b.paid !== '' ? num(b.paid) : ''}"> บาท</label><span class="muted small owe"></span></div>`}
+      <label><input type="checkbox" id="ed-deposit" ${b.order_type === DEPOSIT ? 'checked' : ''}> ${ORDER_LABEL[DEPOSIT]}</label></div>`}
     <div class="actions"><button data-close>ยกเลิก</button><button class="primary" id="ed-save">บันทึกการแก้ไข (ต้องมีรหัสแอดมิน)</button></div>`);
   const render = () => {
     $('#ed-body', box).innerHTML = lines.map((l, i) => `<tr><td>${esc(l.code)}</td><td>${esc(l.name)}</td>
@@ -887,9 +875,7 @@ function editBill(b) {
       <td class="num">${money(l.qty * l.unit)}</td><td><button class="ghost" data-del="${i}">✕</button></td></tr>`).join('');
     const tot = lines.reduce((s, l) => s + l.qty * l.unit, 0);
     $('#ed-net', box).textContent = 'สุทธิ ' + money(tot - num($('#ed-disc', box).value));
-    if ($('#ed-order', box)) orderPicker($('#ed-order', box), 'ed-order', tot - num($('#ed-disc', box).value));
   };
-  if ($('#ed-order', box)) $('#ed-order', box).oninput = render;
   $('#ed-body', box).onchange = (e) => { const i = e.target.dataset.i; if (i != null) { lines[i][e.target.dataset.f] = num(e.target.value); setTimeout(render); } };
   $('#ed-body', box).onclick = (e) => { const d = e.target.dataset.del; if (d != null) { lines.splice(num(d), 1); render(); } };
   $('#ed-disc', box).oninput = render;
@@ -907,9 +893,10 @@ function editBill(b) {
     const custText = $('#ed-cus', box).value.trim();
     const custName = customerNameFor(custText);
     const discount = round2(num($('#ed-disc', box).value));
-    const sumNow = round2(lines.reduce((s, l) => s + l.qty * l.unit, 0)) - discount;
-    const order = $('#ed-order', box) ? orderPicker($('#ed-order', box), 'ed-order', sumNow) : { order_type: b.order_type || '', paid: b.paid };
-    if (order.order_type && num(order.paid) > sumNow + 0.001) return toast('ยอดจ่ายแล้วมากกว่ายอดบิล');
+    const dep = $('#ed-deposit', box);
+    // ติ๊กมัดจำ = มัดจำรอของ, ไม่ติ๊ก = ปกติ (บิลเก่าที่เป็นสั่งด่วน/สั่งรายสัปดาห์ ถ้าไม่แตะ ให้คงไว้ตามเดิม)
+    const order = !dep || (!dep.checked && b.order_type && b.order_type !== DEPOSIT) ? { order_type: b.order_type || '', paid: b.paid }
+      : { order_type: dep.checked ? DEPOSIT : '', paid: '' };
     const ap = await askApproval('อนุมัติการแก้ไขบิล ' + b.bill_no, 'การแก้ไขจะถูกบันทึกประวัติไว้ทั้งก่อนและหลังแก้');
     if (!ap) return;
     const cust = customerByName(custText);
@@ -1328,6 +1315,81 @@ function exportExcel() {
   XLSX.writeFile(wb, `ขายอะไหล่_${bname}_${dname}.xlsx`);
 }
 
+/* ================================================================ ใบคุมบิลรายวัน (ฝ่ายบัญชี) */
+
+// แต่ละเครื่องจองเลขไว้ชุดละ NUMBER_BLOCK เลข ชุดเลขเดียวกัน = เครื่องเดียวกัน
+function billSeq(no) { return num(String(no).slice(-5)); }
+function billBlock(no) { const n = billSeq(no); return String(no).slice(0, -5) + '|' + Math.floor((n - 1) / NUMBER_BLOCK); }
+function blockLabel(no) {
+  const n = billSeq(no), a = Math.floor((n - 1) / NUMBER_BLOCK) * NUMBER_BLOCK + 1, head = String(no).slice(0, -5);
+  return `${head}${pad(a, 5)} - ${head}${pad(a + NUMBER_BLOCK - 1, 5)}`;
+}
+// เงินที่ต้องได้รับจากบิล: ทุกบิลรับเต็มยอด บิลคืน = จ่ายคืน (ติดลบ) บิลยกเลิก = 0
+function billCash(b) {
+  if (b.status === 'ยกเลิก') return 0;
+  return b.type === 'คืน' ? -num(b.net) : num(b.net);
+}
+
+function controlSheetHtml(R) {
+  const days = new Map();
+  R.bills.forEach((b) => { const k = b.date + '|' + b.branch; if (!days.has(k)) days.set(k, []); days.get(k).push(b); });
+  const keys = Array.from(days.keys()).sort();
+  if (!keys.length) return '';
+  return keys.map((k) => {
+    const [date, branch] = k.split('|'), bills = days.get(k);
+    const blocks = new Map();
+    bills.slice().sort((a, b) => (a.bill_no < b.bill_no ? -1 : 1)).forEach((b) => { const g = billBlock(b.bill_no); if (!blocks.has(g)) blocks.set(g, []); blocks.get(g).push(b); });
+    const T = { net: 0, cash: 0, n: 0, void: 0, ret: 0, gaps: 0 };
+    let i = 0, devNo = 0;
+    const body = Array.from(blocks.values()).map((list) => {
+      devNo++;
+      const S2 = { net: 0, cash: 0 };
+      let prev = null, rows = '';
+      list.forEach((b) => {
+        const seq = billSeq(b.bill_no);
+        if (prev != null && seq - prev > 1) {
+          const miss = seq - prev - 1; T.gaps += miss;
+          rows += `<tr class="cs-gap"><td></td><td colspan="8">⚠ ไม่พบเลข ${esc(String(b.bill_no).slice(0, -5) + pad(prev + 1, 5))}${miss > 1 ? ' ถึง ' + esc(String(b.bill_no).slice(0, -5) + pad(seq - 1, 5)) : ''} (${miss} เลข) ให้ตรวจสอบเครื่องว่าส่งข้อมูลครบหรือไม่</td></tr>`;
+        }
+        prev = seq;
+        const c = billCash(b), dead = b.status === 'ยกเลิก', ret = b.type === 'คืน';
+        if (dead) T.void++; else { T.n++; if (ret) T.ret++; S2.net += ret ? -num(b.net) : num(b.net); S2.cash += c; }
+        const kind = dead ? 'ยกเลิก' : ret ? 'คืน' + (b.ref_bill ? ' (' + esc(b.ref_bill) + ')' : '') : b.order_type ? esc(orderText(b)) : 'ขายสด';
+        rows += `<tr class="${dead ? 'cs-void' : ''}"><td class="c">${++i}</td><td>${esc(b.bill_no)}</td><td>${esc(b.time || '')}</td><td>${esc(b.customer_name)}</td><td>${kind}</td>
+          <td class="num">${dead ? '-' : money(ret ? -num(b.net) : b.net)}</td><td class="num">${dead ? '-' : money(c)}</td>
+          <td>${esc(b.created_by || '')}</td><td></td></tr>`;
+      });
+      T.net += S2.net; T.cash += S2.cash;
+      const users = Array.from(new Set(list.map((b) => b.created_by).filter(Boolean))).join(', ');
+      return `<tr class="cs-dev"><td colspan="9">เครื่องที่ ${devNo} · ชุดเลข ${esc(blockLabel(list[0].bill_no))} · ${list.length} บิล${users ? ' · ผู้ขาย ' + esc(users) : ''}</td></tr>${rows}
+        <tr class="cs-sub"><td colspan="5">รวมเครื่องที่ ${devNo}</td><td class="num">${money(S2.net)}</td><td class="num">${money(S2.cash)}</td><td colspan="2"></td></tr>`;
+    }).join('');
+    const br = branchInfo(branch);
+    return `<div class="cs-doc">
+      <div class="cs-head"><div><div class="cs-title">ใบคุมบิลขายอะไหล่ประจำวัน</div><div>${esc(S.settings.shop_name || 'หจก.ประสบชัยกลการ')} · ${esc(branchTitle(br))}</div></div>
+        <div class="cs-date">วันที่ <b>${thDate(date)}</b></div></div>
+      <table class="cs-table"><thead><tr><th>#</th><th>เลขที่บิล</th><th>เวลา</th><th>ลูกค้า</th><th>ประเภท</th><th class="num">ยอดบิล</th><th class="num">รับเงิน</th><th>ผู้ขาย</th><th>ตรวจ</th></tr></thead>
+      <tbody>${body}</tbody></table>
+      <div class="cs-sum">
+        <div><span>บิลใช้งาน</span><b>${T.n}</b></div><div><span>บิลคืน</span><b>${T.ret}</b></div><div><span>ยกเลิก</span><b>${T.void}</b></div><div><span>เลขที่หายไป</span><b>${T.gaps}</b></div>
+        <div><span>ยอดขายสุทธิ</span><b>${money(T.net)}</b></div><div class="big"><span>เงินที่ต้องส่ง</span><b>${money(T.cash)}</b></div>
+      </div>
+      <div class="cs-count">นับเงินได้จริง ...................................... บาท &nbsp;&nbsp; ขาด/เกิน ...................................... บาท</div>
+      <div class="cs-sign"><div>ลงชื่อ ......................................................<br>ผู้ส่งเงิน</div><div>ลงชื่อ ......................................................<br>ฝ่ายบัญชีผู้รับเงิน</div></div>
+    </div>`;
+  }).join('');
+}
+
+function printControlSheet() {
+  const R = S.report;
+  if (!R) return toast('กด "แสดง" ก่อน');
+  if (R.branch === '*' && !confirm('เลือก "ทุกสาขา" อยู่ จะพิมพ์แยกหน้าละสาขาต่อวัน ตกลงไหม?')) return;
+  const html = controlSheetHtml(R);
+  if (!html) return toast('ไม่มีบิลในช่วงวันที่นี้');
+  $('#print-area').innerHTML = html;
+  setTimeout(() => window.print(), 50);
+}
+
 /* ================================================================ แอดมิน */
 
 async function loadAudit() {
@@ -1535,7 +1597,6 @@ function bindStatic() {
   $('#sale-table').onclick = (e) => { const d = e.target.dataset.del; if (d != null) { S.cart.lines.splice(num(d), 1); renderCart(); } };
   $('#sale-discount').oninput = () => { S.cart.discBy = 'baht'; renderCart(); };
   $('#sale-discount-pct').oninput = () => { S.cart.discBy = 'pct'; renderCart(); };
-  $('#sale-order').oninput = () => { renderCart(); if (!$('#sale-paid').disabled && document.activeElement.type === 'radio') $('#sale-paid').focus(); };
   $('#sale-customer').onchange = (e) => { const c = customerByName(e.target.value); if (c) e.target.value = customerLabel(c); };
   $('#sale-customer').onfocus = (e) => e.target.select();
   $('#btn-clear').onclick = () => { if (!S.cart.lines.length || confirm('ล้างรายการบนหน้าจอ?')) newSale(); };
@@ -1562,6 +1623,7 @@ function bindStatic() {
 
   // รายงาน
   $('#btn-rep-load').onclick = loadReport;
+  $('#btn-rep-control').onclick = printControlSheet;
   $('#btn-rep-excel').onclick = exportExcel;
   $('#rep-table').onclick = (e) => { const tr = e.target.closest('[data-bill]'); if (tr) openBill(tr.dataset.bill); };
 

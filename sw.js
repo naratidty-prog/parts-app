@@ -1,11 +1,12 @@
 // เก็บไฟล์แอปไว้ในเครื่อง เพื่อเปิดได้แม้ไม่มีอินเทอร์เน็ต
 // เปลี่ยนเลข VERSION ทุกครั้งที่แก้ไฟล์ในโฟลเดอร์ web เพื่อให้เครื่องลูกโหลดของใหม่
-const VERSION = 'parts-app-v10';
+const VERSION = 'parts-app-v13';
 const FILES = ['./', 'index.html', 'styles.css', 'app.js', 'config.js', 'manifest.webmanifest',
   'vendor/xlsx.full.min.js', 'icons/icon-192.png', 'icons/icon-512.png'];
 
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(VERSION).then((c) => c.addAll(FILES)).then(() => self.skipWaiting()));
+  // cache: 'reload' = โหลดจากเซิร์ฟเวอร์จริง ไม่ใช้ไฟล์เก่าที่เบราว์เซอร์จำไว้
+  e.waitUntil(caches.open(VERSION).then((c) => c.addAll(FILES.map((f) => new Request(f, { cache: 'reload' })))).then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', (e) => {
@@ -18,7 +19,8 @@ self.addEventListener('fetch', (e) => {
   if (req.method !== 'GET' || new URL(req.url).origin !== location.origin) return;
   // ใช้ของใหม่จากเน็ตก่อน ถ้าไม่มีเน็ตใช้ของในเครื่อง
   e.respondWith(
-    fetch(req).then((res) => {
+    // no-cache: ถามเซิร์ฟเวอร์ทุกครั้งว่าไฟล์เปลี่ยนไหม กันได้ไฟล์ app.js เก่าปนกับ index.html ใหม่หลังอัปเดต
+    fetch(req, { cache: 'no-cache' }).then((res) => {
       const copy = res.clone();
       caches.open(VERSION).then((c) => c.put(req, copy));
       return res;

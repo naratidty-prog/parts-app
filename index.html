@@ -63,11 +63,7 @@
       <datalist id="customer-list"></datalist>
       <div class="order-opts" id="sale-order">
         <span>หมายเหตุ</span>
-        <label><input type="radio" name="sale-order" value="" checked> ปกติ</label>
-        <label><input type="radio" name="sale-order" value="สั่งด่วน"> รายการอะไหล่สั่งด่วน</label>
-        <label><input type="radio" name="sale-order" value="สั่งรายสัปดาห์"> รายการสั่งรายสัปดาห์</label>
-        <label class="paid">จ่ายเงินแล้ว<input id="sale-paid" type="number" step="0.01" min="0" placeholder="0.00" disabled> บาท</label>
-        <span class="muted small" id="sale-owe"></span>
+        <label><input type="checkbox" id="sale-deposit"> มัดจำจ่ายเงินแล้วรอของ</label>
       </div>
     </div>
     <div class="scan card">
@@ -161,6 +157,7 @@
       <label class="admin-only">สาขา<select id="rep-branch"></select></label>
       <button id="btn-rep-load" class="primary">แสดง</button>
       <button id="btn-rep-excel">ดาวน์โหลด Excel</button>
+      <button id="btn-rep-control" class="alt">พิมพ์ใบคุมบิลรายวัน</button>
     </div>
     <p class="muted" id="rep-msg"></p>
     <div class="card" id="rep-summary"></div>
