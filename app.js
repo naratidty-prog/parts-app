@@ -251,6 +251,7 @@ function fillBranchSelects() {
   sel.innerHTML = opts; sel.value = S.branch; sel.disabled = !isAdmin();
   $('#rep-branch').innerHTML = '<option value="*">ทุกสาขา</option>' + opts;
   $('#rep-branch').value = S.branch;
+  $('#ctl-branch').innerHTML = opts; $('#ctl-branch').value = S.branch;
   $('#user-branch').innerHTML = opts;
 }
 
@@ -725,15 +726,17 @@ async function saveSale(print) {
   const allowed = allowedDiscount(lines);
   const priceChanged = lines.some((l) => Math.abs(l.unit - l.listPrice) > 0.001);
   const overDisc = discount > allowed + 0.001;
-  const needAp = priceChanged || overDisc;
+  const pay = payPicker($('#sale-pay'));
+  const credit = pay.pay_method === PAY_CREDIT;
+  if (credit && (!cust || custName === 'เงินสด' || /^มัดจำ/.test(custName))) return toast('ขายค้างจ่ายต้องเลือกชื่อลูกค้าที่มีในระบบ (ไม่ใช่ "เงินสด")', 5000);
+  const needAp = priceChanged || overDisc || credit;
   let ap = null;
   if (needAp) {
-    const why = [priceChanged ? 'มีการแก้ราคาขาย' : '', overDisc ? `ส่วนลด ${money(discount)} บาท เกินที่ลดได้ ${money(allowed)} บาท` : ''].filter(Boolean).join(' และ ');
+    const why = [credit ? `ขายค้างจ่าย ${money(total - discount)} บาท ให้ ${custName}` : '', priceChanged ? 'มีการแก้ราคาขาย' : '', overDisc ? `ส่วนลด ${money(discount)} บาท เกินที่ลดได้ ${money(allowed)} บาท` : ''].filter(Boolean).join(' และ ');
     ap = await askApproval('ต้องให้แอดมินอนุมัติ', esc(why), false);
     if (!ap) return;
   }
   const order = { order_type: $('#sale-deposit').checked ? DEPOSIT : '', paid: '' };
-  const pay = payPicker($('#sale-pay'));
   if (pay.pay_method === 'โอนเงิน' && !pay.pay_ref && !confirm('ยังไม่ได้ใส่รายละเอียดการโอน จะบันทึกต่อเลยไหม?')) return $('#sale-payref').focus();
   let no;
   try { no = await takeNumber(S.branch); } catch (e) { return toast(e.message, 6000); }
@@ -766,14 +769,17 @@ function payPicker(scope) {
   ref.disabled = method !== 'โอนเงิน';
   return { pay_method: method, pay_ref: method === 'โอนเงิน' ? ref.value.trim() : '' };
 }
+const PAY_CREDIT = 'ค้างจ่าย';
 function payText(b) {
   if (!b || !b.pay_method) return '';
-  return b.pay_method + (b.pay_method === 'โอนเงิน' && b.pay_ref ? ' (' + b.pay_ref + ')' : '');
+  let t = b.pay_method + (b.pay_method === 'โอนเงิน' && b.pay_ref ? ' (' + b.pay_ref + ')' : '');
+  if (b.pay_method === PAY_CREDIT) t += b.settled_date ? ` → รับชำระแล้ว ${thDate(b.settled_date)} ${b.settled_method}${b.settled_ref ? ' (' + b.settled_ref + ')' : ''}` : ' (ยังไม่ได้รับเงิน)';
+  return t;
 }
 function payPickerHtml(name, b) {
   const m = (b && b.pay_method) || 'เงินสด';
   return `<div class="order-opts" id="${name}"><span>ชำระโดย</span>
-    ${['เงินสด', 'โอนเงิน'].map((v) => `<label><input type="radio" name="${name}" value="${v}" ${m === v ? 'checked' : ''}> ${v}</label>`).join('')}
+    ${['เงินสด', 'โอนเงิน', PAY_CREDIT].map((v) => `<label><input type="radio" name="${name}" value="${v}" ${m === v ? 'checked' : ''}> ${v}</label>`).join('')}
     <input class="payref" placeholder="รายละเอียดการโอน" value="${esc((b && b.pay_ref) || '')}" ${m === 'โอนเงิน' ? '' : 'disabled'}></div>`;
 }
 function orderText(b, long = true) {
@@ -793,7 +799,8 @@ function receiptHtml(bill, copy) {
   let body = '';
   // ช่องหมายเหตุ: แถวแรก "จ่ายเงินวันที่" ตามแบบเดิม ต่อด้วยประเภทการสั่งและยอดที่จ่ายแล้ว
   const notes = [isRet ? '' : 'จ่ายเงินวันที่'];
-  if (!isRet && bill.pay_method) notes.push(`ชำระโดย <b>${esc(bill.pay_method)}</b>`, ...(bill.pay_method === 'โอนเงิน' && bill.pay_ref ? [esc(bill.pay_ref)] : []));
+  if (!isRet && bill.pay_method === PAY_CREDIT) notes.push('<b>ค้างจ่าย</b>', ...(bill.settled_date ? [`ชำระแล้ว ${thDate(bill.settled_date)}`, esc(bill.settled_method + (bill.settled_ref ? ' ' + bill.settled_ref : ''))] : []));
+  else if (!isRet && bill.pay_method) notes.push(`ชำระโดย <b>${esc(bill.pay_method)}</b>`, ...(bill.pay_method === 'โอนเงิน' && bill.pay_ref ? [esc(bill.pay_ref)] : []));
   if (bill.order_type) notes.push(`<b>${esc(orderText(bill))}</b>`);
   for (let i = 0; i < rows; i++) {
     const l = lines[i], n = notes[i] || '';
@@ -866,14 +873,39 @@ async function openBill(no) {
     <div class="actions">
       <button data-close>ปิด</button>
       <button id="bd-print">พิมพ์</button>
+      ${canChange && b.pay_method === PAY_CREDIT && !b.settled_date ? '<button class="primary" id="bd-settle">รับชำระบิลค้าง</button>' : ''}
       ${canChange ? '<button id="bd-edit">แก้ไขบิล</button>' : ''}
       ${canChange && b.type === 'ขาย' ? '<button id="bd-return">ทำบิลคืนอะไหล่</button>' : ''}
       ${canChange ? '<button class="danger" id="bd-void">ยกเลิกบิล</button>' : ''}
     </div>`);
   $('#bd-print', box).onclick = () => { closeModal(); printBill(b); };
   if ($('#bd-edit', box)) $('#bd-edit', box).onclick = () => editBill(b);
+  if ($('#bd-settle', box)) $('#bd-settle', box).onclick = () => settleBill(b);
   if ($('#bd-void', box)) $('#bd-void', box).onclick = () => voidBill(b);
   if ($('#bd-return', box)) $('#bd-return', box).onclick = () => returnBill(b);
+}
+
+// รับชำระบิลค้างจ่าย: ลงวันที่รับเงินจริง (ใบคุมวันนี้) บิลเดิมยังเป็นค้างจ่ายในใบคุมวันที่ขาย
+function settleBill(b) {
+  const box = openModal(`<h2>รับชำระบิลค้าง ${esc(b.bill_no)}</h2>
+    <p>ลูกค้า <b>${esc(b.customer_name)}</b> · บิลวันที่ ${thDate(b.date)} · ยอด <b>${money(b.net)}</b> บาท</p>
+    <div class="order-opts" id="st-pay"><span>รับเป็น</span>
+      <label><input type="radio" name="st-pay" value="เงินสด" checked> เงินสด</label>
+      <label><input type="radio" name="st-pay" value="โอนเงิน"> โอนเงิน</label>
+      <input class="payref" placeholder="รายละเอียดการโอน" disabled></div>
+    <div class="actions"><button data-close>ยกเลิก</button><button class="primary" id="st-save">บันทึกรับเงิน ${money(b.net)} บาท</button></div>`);
+  $('#st-pay', box).onchange = () => payPicker($('#st-pay', box));
+  $('#st-save', box).onclick = async () => {
+    const p = payPicker($('#st-pay', box));
+    if (p.pay_method === 'โอนเงิน' && !p.pay_ref && !confirm('ยังไม่ได้ใส่รายละเอียดการโอน จะบันทึกต่อเลยไหม?')) return;
+    const date = todayISO();
+    await enqueue({ type: 'settleBill', bill_no: b.bill_no, date, method: p.pay_method, ref: p.pay_ref, by: S.user.username });
+    Object.assign(b, { settled_date: date, settled_method: p.pay_method, settled_ref: p.pay_ref, settled_by: S.user.username, _sync: 'pending' });
+    await DB.put('bills', b);
+    closeModal();
+    toast('รับชำระบิล ' + b.bill_no + ' แล้ว');
+    if (!$('#tab-control').classList.contains('hidden')) loadControl();
+  };
 }
 
 function editBill(b) {
@@ -1253,23 +1285,28 @@ async function estimateList() {
 
 /* ================================================================ รายงาน */
 
-async function loadReport() {
-  const from = $('#rep-from').value || todayISO(), to = $('#rep-to').value || from;
-  const branch = isAdmin() ? $('#rep-branch').value : S.user.branch;
-  $('#rep-msg').textContent = 'กำลังโหลด…';
+// บิลจากระบบกลาง + บิลในเครื่องที่ยังไม่ได้ส่ง (ใช้ทั้งหน้ารายงานและหน้าใบคุม)
+async function fetchBills(branch, from, to) {
   let bills = [], source = '';
   try {
     bills = await api('bills', { branch, from, to });
     source = 'ข้อมูลจากระบบกลาง';
   } catch (e) {
-    if (!(e instanceof NetError)) { $('#rep-msg').textContent = e.message; return; }
+    if (!(e instanceof NetError)) throw e;
     source = 'ออฟไลน์: แสดงเฉพาะบิลที่อยู่ในเครื่องนี้';
   }
-  // รวมบิลในเครื่องที่ยังไม่ได้ส่ง (หรือแก้ไขแล้วยังไม่ได้ส่ง) ให้เห็นด้วย
   const local = (await DB.all('bills')).filter((b) => b.date >= from && b.date <= to && (branch === '*' || b.branch === branch));
   const map = new Map(bills.map((b) => [b.bill_no, b]));
   local.forEach((b) => { if (b._sync !== 'synced' || !map.has(b.bill_no)) map.set(b.bill_no, b); });
-  bills = Array.from(map.values()).sort((a, b) => (a.date + a.bill_no < b.date + b.bill_no ? -1 : 1));
+  return { source, bills: Array.from(map.values()).sort((a, b) => (a.date + a.bill_no < b.date + b.bill_no ? -1 : 1)) };
+}
+
+async function loadReport() {
+  const from = $('#rep-from').value || todayISO(), to = $('#rep-to').value || from;
+  const branch = isAdmin() ? $('#rep-branch').value : S.user.branch;
+  $('#rep-msg').textContent = 'กำลังโหลด…';
+  let bills, source;
+  try { ({ bills, source } = await fetchBills(branch, from, to)); } catch (e) { $('#rep-msg').textContent = e.message; return; }
   S.report = { from, to, branch, bills };
   $('#rep-msg').textContent = source + ` · ${bills.length} บิล`;
   renderReport();
@@ -1347,70 +1384,132 @@ function blockLabel(no) {
   const n = billSeq(no), a = Math.floor((n - 1) / NUMBER_BLOCK) * NUMBER_BLOCK + 1, head = String(no).slice(0, -5);
   return `${head}${pad(a, 5)} - ${head}${pad(a + NUMBER_BLOCK - 1, 5)}`;
 }
-// เงินที่ต้องได้รับจากบิล: ทุกบิลรับเต็มยอด บิลคืน = จ่ายคืน (ติดลบ) บิลยกเลิก = 0
+// เงินที่ได้รับจากบิล: ทุกบิลรับเต็มยอด บิลคืน = จ่ายคืน (ติดลบ) บิลยกเลิก = 0
 function billCash(b) {
   if (b.status === 'ยกเลิก') return 0;
   return b.type === 'คืน' ? -num(b.net) : num(b.net);
 }
+// แยกเงินสด / เงินโอน / ค้างจ่าย (บิลเก่าที่ไม่ได้ระบุ และบิลคืน นับเป็นเงินสด)
+function billSplit(b) {
+  const c = billCash(b);
+  if (b.pay_method === PAY_CREDIT) return { cash: 0, transfer: 0, credit: c };
+  return b.pay_method === 'โอนเงิน' ? { cash: 0, transfer: c, credit: 0 } : { cash: c, transfer: 0, credit: 0 };
+}
 
 function controlSheetHtml(R) {
-  const days = new Map();
-  R.bills.forEach((b) => { const k = b.date + '|' + b.branch; if (!days.has(k)) days.set(k, []); days.get(k).push(b); });
+  const days = new Map(), add = (k) => { if (!days.has(k)) days.set(k, { bills: [], settled: [] }); return days.get(k); };
+  R.bills.forEach((b) => add(b.date + '|' + b.branch).bills.push(b));
+  (R.settled || []).forEach((b) => add(b.settled_date + '|' + b.branch).settled.push(b));
   const keys = Array.from(days.keys()).sort();
   if (!keys.length) return '';
+  const m = (v) => (v ? money(v) : '');
   return keys.map((k) => {
-    const [date, branch] = k.split('|'), bills = days.get(k);
+    const [date, branch] = k.split('|'), { bills, settled } = days.get(k);
     const blocks = new Map();
     bills.slice().sort((a, b) => (a.bill_no < b.bill_no ? -1 : 1)).forEach((b) => { const g = billBlock(b.bill_no); if (!blocks.has(g)) blocks.set(g, []); blocks.get(g).push(b); });
-    const T = { net: 0, cash: 0, money: 0, transfer: 0, n: 0, void: 0, ret: 0, gaps: 0 };
+    const T = { net: 0, cash: 0, transfer: 0, credit: 0, nCash: 0, nTransfer: 0, nCredit: 0, n: 0, void: 0, ret: 0, retAmt: 0, gaps: 0, sCash: 0, sTransfer: 0 };
     let i = 0, devNo = 0;
     const body = Array.from(blocks.values()).map((list) => {
       devNo++;
-      const S2 = { net: 0, cash: 0 };
+      const S2 = { net: 0, cash: 0, transfer: 0, credit: 0 };
       let prev = null, rows = '';
       list.forEach((b) => {
         const seq = billSeq(b.bill_no);
         if (prev != null && seq - prev > 1) {
           const miss = seq - prev - 1; T.gaps += miss;
-          rows += `<tr class="cs-gap"><td></td><td colspan="10">⚠ ไม่พบเลข ${esc(String(b.bill_no).slice(0, -5) + pad(prev + 1, 5))}${miss > 1 ? ' ถึง ' + esc(String(b.bill_no).slice(0, -5) + pad(seq - 1, 5)) : ''} (${miss} เลข) ให้ตรวจสอบเครื่องว่าส่งข้อมูลครบหรือไม่</td></tr>`;
+          rows += `<tr class="cs-gap"><td></td><td colspan="11">⚠ ไม่พบเลข ${esc(String(b.bill_no).slice(0, -5) + pad(prev + 1, 5))}${miss > 1 ? ' ถึง ' + esc(String(b.bill_no).slice(0, -5) + pad(seq - 1, 5)) : ''} (${miss} เลข) ให้ตรวจสอบเครื่องว่าส่งข้อมูลครบหรือไม่</td></tr>`;
         }
         prev = seq;
-        const c = billCash(b), dead = b.status === 'ยกเลิก', ret = b.type === 'คืน';
-        if (dead) T.void++; else { T.n++; if (ret) T.ret++; S2.net += ret ? -num(b.net) : num(b.net); S2.cash += c; if (b.pay_method === 'โอนเงิน') T.transfer += c; else T.money += c; }
-        const kind = dead ? 'ยกเลิก' : ret ? 'คืน' + (b.ref_bill ? ' (' + esc(b.ref_bill) + ')' : '') : b.order_type ? esc(orderText(b)) : 'ขายสด';
+        const dead = b.status === 'ยกเลิก', ret = b.type === 'คืน', sp = billSplit(b);
+        if (dead) T.void++;
+        else {
+          T.n++; if (ret) { T.ret++; T.retAmt += num(b.net); }
+          S2.net += ret ? -num(b.net) : num(b.net); S2.cash += sp.cash; S2.transfer += sp.transfer; S2.credit += sp.credit;
+          if (!ret) { if (sp.credit) T.nCredit++; else if (sp.transfer) T.nTransfer++; else T.nCash++; }
+        }
+        const kind = dead ? 'ยกเลิก' : ret ? 'คืน' + (b.ref_bill ? ' (' + esc(b.ref_bill) + ')' : '') : [b.pay_method === PAY_CREDIT ? 'ขายค้างจ่าย' : '', b.order_type ? esc(orderText(b)) : ''].filter(Boolean).join(' · ') || 'ขายสด';
         rows += `<tr class="${dead ? 'cs-void' : ''}"><td class="c">${++i}</td><td>${esc(b.bill_no)}</td><td>${esc(b.time || '')}</td><td>${esc(b.customer_name)}</td><td>${kind}</td>
-          <td>${esc(b.pay_method || (ret ? '' : 'เงินสด'))}${b.pay_method === 'โอนเงิน' && b.pay_ref ? `<div class="cs-ref">${esc(b.pay_ref)}</div>` : ''}</td>
-          <td class="num">${dead ? '-' : money(ret ? -num(b.net) : b.net)}</td><td class="num">${dead ? '-' : money(c)}</td>
+          <td class="num">${dead ? '-' : money(ret ? -num(b.net) : b.net)}</td><td class="num">${dead ? '-' : m(sp.cash)}</td>
+          <td class="num">${dead ? '-' : m(sp.transfer)}${b.pay_method === 'โอนเงิน' && b.pay_ref ? `<div class="cs-ref">${esc(b.pay_ref)}</div>` : ''}</td>
+          <td class="num">${dead ? '-' : m(sp.credit)}${sp.credit && b.settled_date ? `<div class="cs-ref">ชำระแล้ว ${thDate(b.settled_date)}</div>` : ''}</td>
           <td>${esc(b.created_by || '')}</td><td>${esc(b.approved_by || '')}</td><td></td></tr>`;
       });
-      T.net += S2.net; T.cash += S2.cash;
+      T.net += S2.net; T.cash += S2.cash; T.transfer += S2.transfer; T.credit += S2.credit;
       const users = Array.from(new Set(list.map((b) => b.created_by).filter(Boolean))).join(', ');
-      return `<tr class="cs-dev"><td colspan="11">เครื่องที่ ${devNo} · ชุดเลข ${esc(blockLabel(list[0].bill_no))} · ${list.length} บิล${users ? ' · ผู้ขาย ' + esc(users) : ''}</td></tr>${rows}
-        <tr class="cs-sub"><td colspan="6">รวมเครื่องที่ ${devNo}</td><td class="num">${money(S2.net)}</td><td class="num">${money(S2.cash)}</td><td colspan="3"></td></tr>`;
+      return `<tr class="cs-dev"><td colspan="12">เครื่องที่ ${devNo} · ชุดเลข ${esc(blockLabel(list[0].bill_no))} · ${list.length} บิล${users ? ' · ผู้ขาย ' + esc(users) : ''}</td></tr>${rows}
+        <tr class="cs-sub"><td colspan="5">รวมเครื่องที่ ${devNo}</td><td class="num">${money(S2.net)}</td><td class="num">${money(S2.cash)}</td><td class="num">${money(S2.transfer)}</td><td class="num">${money(S2.credit)}</td><td colspan="3"></td></tr>`;
     }).join('');
+    // รับชำระบิลค้างจ่ายในวันนี้ (บิลของวันก่อน หรือวันนี้ก็ได้)
+    let settledHtml = '';
+    if (settled.length) {
+      settledHtml = `<div class="cs-subtitle">รับชำระบิลค้างจ่าย (${settled.length} บิล)</div>
+        <table class="cs-table"><thead><tr><th>เลขที่บิล</th><th>วันที่ขาย</th><th>ลูกค้า</th><th class="num">เงินสด</th><th class="num">เงินโอน</th><th>ผู้รับเงิน</th><th>ตรวจ</th></tr></thead><tbody>
+        ${settled.map((b) => { const v = num(b.net), tr = b.settled_method === 'โอนเงิน'; if (tr) T.sTransfer += v; else T.sCash += v;
+          return `<tr><td>${esc(b.bill_no)}</td><td>${thDate(b.date)}</td><td>${esc(b.customer_name)}</td><td class="num">${tr ? '' : money(v)}</td>
+            <td class="num">${tr ? money(v) : ''}${tr && b.settled_ref ? `<div class="cs-ref">${esc(b.settled_ref)}</div>` : ''}</td><td>${esc(b.settled_by || '')}</td><td></td></tr>`; }).join('')}
+        </tbody><tfoot><tr class="cs-total"><td colspan="3">รวมรับชำระ</td><td class="num">${money(T.sCash)}</td><td class="num">${money(T.sTransfer)}</td><td colspan="2"></td></tr></tfoot></table>`;
+    }
     const br = branchInfo(branch);
+    const cashAll = T.cash + T.sCash, transferAll = T.transfer + T.sTransfer;
     return `<div class="cs-doc">
       <div class="cs-head"><div><div class="cs-title">ใบคุมบิลขายอะไหล่ประจำวัน</div><div>${esc(S.settings.shop_name || 'หจก.ประสบชัยกลการ')} · ${esc(branchTitle(br))}</div></div>
         <div class="cs-date">วันที่ <b>${thDate(date)}</b></div></div>
-      <table class="cs-table"><thead><tr><th>#</th><th>เลขที่บิล</th><th>เวลา</th><th>ลูกค้า</th><th>ประเภท</th><th>ชำระโดย</th><th class="num">ยอดบิล</th><th class="num">รับเงิน</th><th>ผู้ขาย</th><th>ผู้อนุมัติ</th><th>ตรวจ</th></tr></thead>
-      <tbody>${body}</tbody></table>
-      <div class="cs-sum">
-        <div><span>บิลใช้งาน</span><b>${T.n}</b></div><div><span>บิลคืน</span><b>${T.ret}</b></div><div><span>ยกเลิก</span><b>${T.void}</b></div><div><span>เลขที่หายไป</span><b>${T.gaps}</b></div>
-        <div><span>ยอดขายสุทธิ</span><b>${money(T.net)}</b></div><div><span>รับโอนเงิน</span><b>${money(T.transfer)}</b></div>
-        <div><span>รับเงินรวม</span><b>${money(T.cash)}</b></div><div class="big"><span>เงินสดที่ต้องส่ง</span><b>${money(T.money)}</b></div>
+      ${bills.length ? `<table class="cs-table"><thead><tr><th>#</th><th>เลขที่บิล</th><th>เวลา</th><th>ลูกค้า</th><th>ประเภท</th><th class="num">ยอดบิล</th><th class="num">เงินสด</th><th class="num">เงินโอน</th><th class="num">ค้างจ่าย</th><th>ผู้ขาย</th><th>ผู้อนุมัติ</th><th>ตรวจ</th></tr></thead>
+      <tbody>${body}</tbody>
+      <tfoot><tr class="cs-total"><td colspan="5">รวมทั้งวัน</td><td class="num">${money(T.net)}</td><td class="num">${money(T.cash)}</td><td class="num">${money(T.transfer)}</td><td class="num">${money(T.credit)}</td><td colspan="3"></td></tr></tfoot></table>` : '<p class="muted">ไม่มีบิลขายในวันนี้</p>'}
+      ${settledHtml}
+      <div class="cs-eod">
+        <div class="cs-eod-title">สรุปยอดสิ้นวัน</div>
+        <table>
+          <tr><td colspan="2">บิลขาย ${T.n - T.ret} ใบ · บิลคืน ${T.ret} ใบ · ยกเลิก ${T.void} ใบ${T.gaps ? ` · <b class="cs-warn">เลขที่หายไป ${T.gaps} เลข</b>` : ''}</td></tr>
+          <tr><td>ขายรับเงินสด (${T.nCash} บิล)${T.retAmt ? ` หักคืนเงิน ${money(T.retAmt)}` : ''}</td><td class="num">${money(T.cash)}</td></tr>
+          <tr><td>ขายรับเงินโอน (${T.nTransfer} บิล)</td><td class="num">${money(T.transfer)}</td></tr>
+          ${T.nCredit ? `<tr class="cs-muted"><td>ขายค้างจ่าย (${T.nCredit} บิล) ยังไม่ได้รับเงิน</td><td class="num">${money(T.credit)}</td></tr>` : ''}
+          ${settled.length ? `<tr><td>รับชำระบิลค้าง เงินสด / เงินโอน</td><td class="num">${money(T.sCash)} / ${money(T.sTransfer)}</td></tr>` : ''}
+          <tr class="cs-eod-sum"><td>รวมรับเงินทั้งวัน (เงินสด ${money(cashAll)} + โอน ${money(transferAll)})</td><td class="num">${money(cashAll + transferAll)}</td></tr>
+          <tr class="cs-eod-big"><td>เงินสดที่ต้องส่งฝ่ายบัญชี</td><td class="num">${money(cashAll)}</td></tr>
+        </table>
       </div>
-      <div class="cs-count">นับเงินสดได้จริง ...................................... บาท &nbsp;&nbsp; ขาด/เกิน ...................................... บาท</div>
+      ${(R.credits || []).some((b) => b.date <= date) ? creditListHtml(R.credits.filter((b) => b.date <= date), date) : ''}
+      <div class="cs-count">นับเงินสดได้จริง ...................................... บาท &nbsp;&nbsp; ขาด/เกิน ...................................... บาท &nbsp;&nbsp; ตรวจยอดโอนกับบัญชีธนาคารแล้ว ☐</div>
       <div class="cs-sign"><div>ลงชื่อ ......................................................<br>ผู้ส่งเงิน</div><div>ลงชื่อ ......................................................<br>ฝ่ายบัญชีผู้รับเงิน</div></div>
     </div>`;
   }).join('');
 }
 
-function printControlSheet() {
-  const R = S.report;
-  if (!R) return toast('กด "แสดง" ก่อน');
-  if (R.branch === '*' && !confirm('เลือก "ทุกสาขา" อยู่ จะพิมพ์แยกหน้าละสาขาต่อวัน ตกลงไหม?')) return;
-  const html = controlSheetHtml(R);
-  if (!html) return toast('ไม่มีบิลในช่วงวันที่นี้');
+// บิลค้างจ่ายที่ยังไม่ได้รับเงิน (ณ วันที่พิมพ์)
+function daysBetween(a, b) { return Math.round((new Date(b + 'T00:00:00') - new Date(a + 'T00:00:00')) / 864e5); }
+function creditListHtml(list, asOf) {
+  const sum = list.reduce((s, b) => s + num(b.net), 0);
+  return `<div class="cs-subtitle">บิลค้างจ่ายที่ยังไม่ได้รับเงิน ${list.length} บิล รวม ${money(sum)} บาท</div>
+    <table class="cs-table"><thead><tr><th>เลขที่บิล</th><th>วันที่ขาย</th><th class="num">ค้างมา (วัน)</th><th>ลูกค้า</th><th class="num">ยอด</th><th>ผู้ขาย</th><th>ผู้อนุมัติ</th></tr></thead><tbody>
+    ${list.map((b) => `<tr class="clickable" data-bill="${esc(b.bill_no)}"><td>${esc(b.bill_no)}</td><td>${thDate(b.date)}</td><td class="num">${Math.max(0, daysBetween(b.date, asOf))}</td><td>${esc(b.customer_name)}</td>
+      <td class="num">${money(b.net)}</td><td>${esc(b.created_by || '')}</td><td>${esc(b.approved_by || '')}</td></tr>`).join('')}</tbody></table>`;
+}
+
+async function loadControl() {
+  const date = $('#ctl-date').value || todayISO();
+  const branch = isAdmin() ? $('#ctl-branch').value || S.branch : S.user.branch;
+  $('#ctl-msg').textContent = 'กำลังโหลด…';
+  let r;
+  try { r = await fetchBills(branch, date, date); } catch (e) { $('#ctl-msg').textContent = e.message; return; }
+  // รับชำระบิลค้างวันนี้ + บิลค้างจ่ายคงค้าง (ออฟไลน์ใช้ข้อมูลในเครื่อง)
+  const local = (await DB.all('bills')).filter((b) => b.branch === branch && b.pay_method === PAY_CREDIT && b.status === 'ปกติ');
+  let settled = [], credits = [];
+  try { settled = await api('settled', { branch, date }); credits = await api('credits', { branch }); } catch (e) { /* ออฟไลน์ */ }
+  const merge = (arr, keep) => { const mp = new Map(arr.map((b) => [b.bill_no, b])); local.forEach((b) => { if (b._sync !== 'synced' || mp.has(b.bill_no)) mp.set(b.bill_no, b); }); return Array.from(mp.values()).filter(keep); };
+  settled = merge(settled, (b) => b.settled_date === date);
+  credits = merge(credits, (b) => !b.settled_date).sort((a, b) => (a.bill_no < b.bill_no ? -1 : 1));
+  S.control = { from: date, to: date, branch, bills: r.bills, settled, credits };
+  $('#ctl-msg').textContent = r.source + ` · ${r.bills.length} บิล`;
+  $('#ctl-preview').innerHTML = controlSheetHtml(S.control)
+    || (credits.length ? `<div class="cs-doc"><p class="muted">ไม่มีบิลในวันนี้</p>${creditListHtml(credits, date)}</div>` : '<p class="muted">ไม่มีบิลในวันนี้</p>');
+}
+
+async function printControlSheet() {
+  if (!S.control) await loadControl();
+  if (!$('#ctl-preview .cs-doc')) return toast('ไม่มีบิลในวันนี้');
+  const html = $('#ctl-preview').innerHTML;
   $('#print-area').innerHTML = html;
   setTimeout(() => window.print(), 50);
 }
@@ -1564,6 +1663,7 @@ function switchTab(name) {
   if (name === 'report' && !S.report) { $('#rep-from').value = $('#rep-from').value || todayISO(); $('#rep-to').value = $('#rep-to').value || todayISO(); loadReport(); }
   if (name === 'print' && S.printBill) renderPrintPreview(S.printBill);
   if (name === 'admin') loadAudit();
+  if (name === 'control' && !$('#ctl-date').value) { $('#ctl-date').value = todayISO(); loadControl(); }
   if (name === 'estimate') { if (!S.est || S.est.branch !== S.branch) newEstimate(); $('#est-scan').focus(); }
 }
 
@@ -1649,7 +1749,16 @@ function bindStatic() {
   // รายงาน
   $('#btn-rep-load').onclick = loadReport;
   $('#sale-pay').onchange = () => { const p = payPicker($('#sale-pay')); if (p.pay_method === 'โอนเงิน') $('#sale-payref').focus(); };
-  $('#btn-rep-control').onclick = printControlSheet;
+  $('#btn-rep-control').onclick = () => {
+    $('#ctl-date').value = $('#rep-from').value || todayISO();
+    if (isAdmin() && $('#rep-branch').value !== '*') $('#ctl-branch').value = $('#rep-branch').value;
+    switchTab('control'); loadControl();
+  };
+  $('#btn-ctl-load').onclick = loadControl;
+  $('#ctl-preview').onclick = (e) => { const tr = e.target.closest('[data-bill]'); if (tr) openBill(tr.dataset.bill); };
+  $('#btn-ctl-print').onclick = printControlSheet;
+  $('#ctl-date').onchange = loadControl;
+  $('#ctl-branch').onchange = loadControl;
   $('#btn-rep-excel').onclick = exportExcel;
   $('#rep-table').onclick = (e) => { const tr = e.target.closest('[data-bill]'); if (tr) openBill(tr.dataset.bill); };
 

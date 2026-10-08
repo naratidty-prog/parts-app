@@ -206,3 +206,18 @@ button.alt { background: #2e7d4f; border-color: #2e7d4f; }
 .cs-ref { font-size: 9.5px; color: #555; max-width: 30mm; word-break: break-word; }
 .order-opts .payref { flex: 1 1 260px; min-width: 200px; }
 .order-opts .payref:disabled { opacity: .45; }
+
+.preview .cs-doc { box-shadow: 0 1px 6px rgba(0,0,0,.15); margin: 0 auto 12px; padding: 8mm; }
+.cs-total td { background: #1f4e79; color: #fff; font-weight: 700; }
+.cs-eod { margin: 4mm 0 0 auto; width: 100mm; border: 2px solid #1f4e79; border-radius: 2mm; overflow: hidden; }
+.cs-eod-title { background: #1f4e79; color: #fff; font-weight: 700; padding: 1.5mm 3mm; }
+.cs-eod table { width: 100%; border-collapse: collapse; }
+.cs-eod td { padding: 1.3mm 3mm; border-bottom: 1px solid #dde5ee; }
+.cs-eod .num { text-align: right; white-space: nowrap; }
+.cs-eod-sum td { font-weight: 700; }
+.cs-eod-big td { background: #e8f0f8; font-weight: 700; font-size: 14px; color: #1f4e79; border-bottom: 0; }
+.cs-warn { color: #a15c00; }
+
+.cs-subtitle { margin: 4mm 0 1.5mm; font-weight: 700; color: #1f4e79; font-size: 12.5px; }
+.cs-muted td { color: #8a5a00; }
+.order-opts label.credit { color: #a15c00; }

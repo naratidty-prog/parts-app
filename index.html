@@ -49,6 +49,7 @@
     <button data-tab="print">พิมพ์ใบเสร็จ</button>
     <button data-tab="estimate">ใบประเมินราคา</button>
     <button data-tab="report">รายงานบันทึกขายอะไหล่</button>
+    <button data-tab="control">พิมพ์ใบคุม</button>
     <button data-tab="customers">ลูกค้า</button>
     <button data-tab="admin" class="admin-only">แอดมิน</button>
   </nav>
@@ -69,6 +70,7 @@
         <span>ชำระโดย</span>
         <label><input type="radio" name="sale-pay" value="เงินสด" checked> เงินสด</label>
         <label><input type="radio" name="sale-pay" value="โอนเงิน"> โอนเงิน</label>
+        <label class="credit"><input type="radio" name="sale-pay" value="ค้างจ่าย"> ค้างจ่าย <span class="muted small">(ต้องใช้รหัสแอดมิน)</span></label>
         <input id="sale-payref" class="payref" placeholder="รายละเอียดการโอน เช่น ธนาคาร / เวลา / เลขอ้างอิง" disabled>
       </div>
     </div>
@@ -163,7 +165,7 @@
       <label class="admin-only">สาขา<select id="rep-branch"></select></label>
       <button id="btn-rep-load" class="primary">แสดง</button>
       <button id="btn-rep-excel">ดาวน์โหลด Excel</button>
-      <button id="btn-rep-control" class="alt">พิมพ์ใบคุมบิลรายวัน</button>
+      <button id="btn-rep-control" class="alt">ดูใบคุมบิลรายวัน</button>
     </div>
     <p class="muted" id="rep-msg"></p>
     <div class="card" id="rep-summary"></div>
@@ -173,6 +175,18 @@
         <tbody></tbody>
       </table>
     </div>
+  </main>
+
+  <!-- ใบคุมบิลรายวัน -->
+  <main id="tab-control" class="tab hidden no-print">
+    <div class="card row">
+      <label>วันที่<input type="date" id="ctl-date"></label>
+      <label class="admin-only">สาขา<select id="ctl-branch"></select></label>
+      <button id="btn-ctl-load">แสดง</button>
+      <button id="btn-ctl-print" class="primary">พิมพ์ใบคุม</button>
+    </div>
+    <p class="muted" id="ctl-msg"></p>
+    <div id="ctl-preview" class="preview"></div>
   </main>
 
   <!-- ลูกค้า -->
