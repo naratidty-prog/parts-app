@@ -221,3 +221,7 @@ button.alt { background: #2e7d4f; border-color: #2e7d4f; }
 .cs-subtitle { margin: 4mm 0 1.5mm; font-weight: 700; color: #1f4e79; font-size: 12.5px; }
 .cs-muted td { color: #8a5a00; }
 .order-opts label.credit { color: #a15c00; }
+
+/* เลขเครื่องบนหน้าขาย (กดเพื่อเปลี่ยน) */
+.dev-link { font-size: 12px; color: #1f4e79; text-decoration: none; margin-left: 4px; }
+.dev-link:hover { text-decoration: underline; }

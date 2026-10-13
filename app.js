@@ -172,7 +172,7 @@ function closeModal() { $('#modal').classList.add('hidden'); $('#modal-box').inn
 /* ================================================================ เริ่มต้น */
 
 // หน้า index.html กับ app.js ต้องเป็นรุ่นเดียวกัน ถ้าเบราว์เซอร์ยังจำหน้าเก่าไว้ ให้โหลดใหม่เอง (ไม่เกิน 3 ครั้ง)
-const APP_BUILD = '17';
+const APP_BUILD = '18';
 function buildMismatch() {
   const m = document.querySelector('meta[name="app-build"]');
   if (m && m.content === APP_BUILD) { try { sessionStorage.removeItem('reloadTry'); } catch (e) { /* */ } return false; }
@@ -438,14 +438,56 @@ function customerForm(c) {
 
 // เลขที่จองไว้ต้องขึ้นต้นตามรูปแบบปัจจุบัน (เช่น PA69) ถ้าเปลี่ยนรูปแบบ เลขเก่าในเครื่องจะถูกทิ้ง
 // kind 'est' = เลขใบประเมินราคา (Q + ตัวอักษรสาขา) จองแยกจากเลขบิล
-function numberPrefix(branch, kind) {
+// เลขบิลแยกตามเครื่อง เช่น PA1-00001 = สำนักงานใหญ่ เครื่องที่ 1 (ใบประเมินยังเป็น QA + ปี + เลข)
+function numberPrefix(branch, kind, dev) {
   const pre = kind === 'est' ? 'Q' : S.settings && 'bill_prefix' in S.settings ? String(S.settings.bill_prefix).trim().toUpperCase() : 'P';
-  return pre + branchInfo(branch).letter;
+  return pre + branchInfo(branch).letter + (kind === 'est' ? '' : dev + '-');
 }
 const numbersKey = (branch, kind) => (kind === 'est' ? 'estnums:' : 'numbers:') + branch;
 async function numberBlocks(branch, kind) {
-  const head = numberPrefix(branch, kind);
-  return ((await DB.kv.get(numbersKey(branch, kind))) || []).filter((b) => b.prefix.indexOf(head) === 0 && /^\d{2}$/.test(b.prefix.slice(head.length)));
+  if (kind === 'est') {
+    const head = numberPrefix(branch, kind);
+    return ((await DB.kv.get(numbersKey(branch, kind))) || []).filter((b) => b.prefix.indexOf(head) === 0 && /^\d{2}$/.test(b.prefix.slice(head.length)));
+  }
+  const dev = await DB.kv.get('deviceNo:' + branch);
+  if (!dev) return [];
+  const head = numberPrefix(branch, kind, dev);
+  return ((await DB.kv.get(numbersKey(branch, kind))) || []).filter((b) => b.prefix === head);
+}
+
+// รหัสประจำเครื่อง (สุ่มครั้งแรก) ใช้ขอเลขเครื่องจากระบบกลาง
+async function deviceId() {
+  let id = await DB.kv.get('deviceId');
+  if (!id) { id = uid() + uid(); await DB.kv.set('deviceId', id); }
+  return id;
+}
+async function ensureDevice(branch) {
+  const dev = await DB.kv.get('deviceNo:' + branch);
+  if (dev) return dev;
+  const r = await api('device', { branch, device_id: await deviceId() });
+  await DB.kv.set('deviceNo:' + branch, r.device_no);
+  return r.device_no;
+}
+async function showDevice() {
+  const dev = await DB.kv.get('deviceNo:' + S.branch);
+  $('#sale-dev').textContent = dev ? 'เครื่องที่ ' + dev : '';
+}
+// เปลี่ยนเลขเครื่อง เช่น เปลี่ยนคอมใหม่แทนเครื่องที่ 1 (ต้องใช้รหัสอนุมัติแอดมิน) เลขบิลจะรันต่อจากเลขสุดท้ายของเครื่องนั้น
+async function changeDevice() {
+  const cur = await DB.kv.get('deviceNo:' + S.branch);
+  const v = prompt(`เครื่องนี้เป็นเครื่องที่ ${cur || '-'} ของ${branchInfo(S.branch).name}\nต้องการเปลี่ยนเป็นเครื่องที่ (1-99)`, cur || '');
+  if (v == null || String(v).trim() === '' || Number(v) === cur) return;
+  const n = Number(v);
+  if (!(n >= 1 && n <= 99 && Math.floor(n) === n)) return toast('เลขเครื่องต้องเป็น 1 ถึง 99');
+  let approval;
+  if (!isAdmin()) { const ap = await askApproval('เปลี่ยนเลขเครื่องเป็น ' + n, 'บิลใหม่ของเครื่องนี้จะใช้หัวเลขของเครื่องที่ ' + n, false); if (!ap) return; approval = ap.approval; }
+  try {
+    const r = await api('device', { branch: S.branch, device_id: await deviceId(), device_no: n, approval });
+    await DB.kv.set('deviceNo:' + S.branch, r.device_no);
+    await DB.kv.set(numbersKey(S.branch), []);   // ทิ้งเลขที่จองไว้ของหัวเดิม
+    toast('ตั้งเป็นเครื่องที่ ' + r.device_no + ' แล้ว');
+    if (!S.cart || !S.cart.lines.length) await newSale(); else await showDevice();
+  } catch (e) { toast(e.message, 6000); }
 }
 function remaining(blocks) { return blocks.reduce((s, b) => s + (b.end - b.next + 1), 0); }
 
@@ -453,7 +495,8 @@ async function ensureNumbers(branch, kind) {
   const blocks = await numberBlocks(branch, kind);
   if (remaining(blocks) >= (kind === 'est' ? 10 : NUMBER_LOW)) return;
   try {
-    const r = await api('reserve', { branch, count: kind === 'est' ? 30 : NUMBER_BLOCK, kind });
+    const device = kind === 'est' ? undefined : await ensureDevice(branch);
+    const r = await api('reserve', { branch, count: kind === 'est' ? 30 : NUMBER_BLOCK, kind, device });
     blocks.push({ prefix: r.prefix, next: r.start, end: r.end });
     await DB.kv.set(numbersKey(branch, kind), blocks);
   } catch (e) { if (!(e instanceof NetError)) toast('จองเลขที่ไม่สำเร็จ: ' + e.message); }
@@ -620,6 +663,7 @@ async function newSale() {
   renderCart();
   await ensureNumbers(S.branch);
   $('#sale-no').textContent = (await peekNumber(S.branch)) || 'รอจองเลข (ต่อเน็ต)';
+  await showDevice();
   $('#scan-input').focus();
 }
 
@@ -1391,11 +1435,18 @@ function exportExcel() {
 
 /* ================================================================ ใบคุมบิลรายวัน (ฝ่ายบัญชี) */
 
-// แต่ละเครื่องจองเลขไว้ชุดละ NUMBER_BLOCK เลข ชุดเลขเดียวกัน = เครื่องเดียวกัน
+// เลขแบบใหม่ PA1-00001: หัวเลขเดียวกัน = เครื่องเดียวกัน
+// เลขแบบเดิม PA6900001: แต่ละเครื่องจองเลขไว้ชุดละ NUMBER_BLOCK เลข ชุดเลขเดียวกัน = เครื่องเดียวกัน
 function billSeq(no) { return num(String(no).slice(-5)); }
-function billBlock(no) { const n = billSeq(no); return String(no).slice(0, -5) + '|' + Math.floor((n - 1) / NUMBER_BLOCK); }
-function blockLabel(no) {
-  const n = billSeq(no), a = Math.floor((n - 1) / NUMBER_BLOCK) * NUMBER_BLOCK + 1, head = String(no).slice(0, -5);
+function billDevice(no) { const m = /(\d{1,2})-\d{5}$/.exec(String(no)); return m ? Number(m[1]) : null; }
+function billBlock(no) {
+  if (billDevice(no) != null) return String(no).slice(0, -5);
+  const n = billSeq(no); return String(no).slice(0, -5) + '|' + Math.floor((n - 1) / NUMBER_BLOCK);
+}
+function blockLabel(no, last) {
+  const head = String(no).slice(0, -5);
+  if (billDevice(no) != null) return `${no}${last && last !== no ? ' - ' + last : ''}`;
+  const n = billSeq(no), a = Math.floor((n - 1) / NUMBER_BLOCK) * NUMBER_BLOCK + 1;
   return `${head}${pad(a, 5)} - ${head}${pad(a + NUMBER_BLOCK - 1, 5)}`;
 }
 // เงินที่ได้รับจากบิล: ทุกบิลรับเต็มยอด บิลคืน = จ่ายคืน (ติดลบ) บิลยกเลิก = 0
@@ -1422,9 +1473,10 @@ function controlSheetHtml(R) {
     const blocks = new Map();
     bills.slice().sort((a, b) => (a.bill_no < b.bill_no ? -1 : 1)).forEach((b) => { const g = billBlock(b.bill_no); if (!blocks.has(g)) blocks.set(g, []); blocks.get(g).push(b); });
     const T = { net: 0, cash: 0, transfer: 0, credit: 0, nCash: 0, nTransfer: 0, nCredit: 0, n: 0, void: 0, ret: 0, retAmt: 0, gaps: 0, sCash: 0, sTransfer: 0 };
-    let i = 0, devNo = 0;
+    let i = 0, n = 0;
     const body = Array.from(blocks.values()).map((list) => {
-      devNo++;
+      n++;
+      const devNo = billDevice(list[0].bill_no) != null ? billDevice(list[0].bill_no) : n;
       const S2 = { net: 0, cash: 0, transfer: 0, credit: 0 };
       let prev = null, rows = '';
       list.forEach((b) => {
@@ -1450,7 +1502,7 @@ function controlSheetHtml(R) {
       });
       T.net += S2.net; T.cash += S2.cash; T.transfer += S2.transfer; T.credit += S2.credit;
       const users = Array.from(new Set(list.map((b) => b.created_by).filter(Boolean))).join(', ');
-      return `<tr class="cs-dev"><td colspan="12">เครื่องที่ ${devNo} · ชุดเลข ${esc(blockLabel(list[0].bill_no))} · ${list.length} บิล${users ? ' · ผู้ขาย ' + esc(users) : ''}</td></tr>${rows}
+      return `<tr class="cs-dev"><td colspan="12">เครื่องที่ ${devNo} · ${billDevice(list[0].bill_no) != null ? 'เลขที่' : 'ชุดเลข'} ${esc(blockLabel(list[0].bill_no, list[list.length - 1].bill_no))} · ${list.length} บิล${users ? ' · ผู้ขาย ' + esc(users) : ''}</td></tr>${rows}
         <tr class="cs-sub"><td colspan="5">รวมเครื่องที่ ${devNo}</td><td class="num">${money(S2.net)}</td><td class="num">${money(S2.cash)}</td><td class="num">${money(S2.transfer)}</td><td class="num">${money(S2.credit)}</td><td colspan="3"></td></tr>`;
     }).join('');
     // รับชำระบิลค้างจ่ายในวันนี้ (บิลของวันก่อน หรือวันนี้ก็ได้)
@@ -1776,6 +1828,7 @@ function bindStatic() {
   $('#btn-ctl-load').onclick = loadControl;
   $('#ctl-preview').onclick = (e) => { const tr = e.target.closest('[data-bill]'); if (tr) openBill(tr.dataset.bill); };
   $('#btn-ctl-print').onclick = printControlSheet;
+  $('#sale-dev').onclick = (ev) => { ev.preventDefault(); changeDevice(); };
   $('#ctl-date').onchange = loadControl;
   $('#ctl-branch').onchange = loadControl;
   $('#btn-rep-excel').onclick = exportExcel;

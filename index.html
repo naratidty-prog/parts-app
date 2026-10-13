@@ -7,8 +7,8 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon-192.png">
 <meta name="theme-color" content="#1f4e79">
-<meta name="app-build" content="17">
-<link rel="stylesheet" href="styles.css?v=17">
+<meta name="app-build" content="18">
+<link rel="stylesheet" href="styles.css?v=18">
 </head>
 <body>
 
@@ -59,7 +59,7 @@
   <!-- ขาย -->
   <main id="tab-sale" class="tab no-print">
     <div class="sale-head card">
-      <div class="field"><span>เลขที่</span><b id="sale-no">-</b></div>
+      <div class="field"><span>เลขที่ <a href="#" id="sale-dev" class="dev-link" title="เปลี่ยนเลขเครื่อง"></a></span><b id="sale-no">-</b></div>
       <label class="field">วันที่<input type="date" id="sale-date"></label>
       <label class="field grow">ลูกค้า<input id="sale-customer" list="customer-list" placeholder="พิมพ์ชื่อ หรือรหัสลูกค้า" value="เงินสด"></label>
       <datalist id="customer-list"></datalist>
@@ -283,6 +283,6 @@
 
 <script src="config.js"></script>
 <script src="vendor/xlsx.full.min.js" defer></script>
-<script src="app.js?v=17"></script>
+<script src="app.js?v=18"></script>
 </body>
 </html>
