@@ -288,3 +288,7 @@ button.link:hover { color: #b3261e; }
 .po-sum-box { grid-template-columns: 1.4fr 1fr 1.2fr; }
 .preview .po-sheet { box-shadow: 0 1px 6px rgba(0,0,0,.15); margin: 0 auto; background: #fff; }
 @media print { .po-noprint { display: none !important; } }
+
+.po-addsup { align-self: flex-end; white-space: nowrap; }
+.sup-in { width: 100%; min-width: 150px; box-sizing: border-box; text-align: left !important; }
+tr.sup-new td { background: #fff8e1; }

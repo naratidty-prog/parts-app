@@ -172,7 +172,7 @@ function closeModal() { $('#modal').classList.add('hidden'); $('#modal-box').inn
 /* ================================================================ เริ่มต้น */
 
 // หน้า index.html กับ app.js ต้องเป็นรุ่นเดียวกัน ถ้าเบราว์เซอร์ยังจำหน้าเก่าไว้ ให้โหลดใหม่เอง (ไม่เกิน 3 ครั้ง)
-const APP_BUILD = '19';
+const APP_BUILD = '20';
 function buildMismatch() {
   const m = document.querySelector('meta[name="app-build"]');
   if (m && m.content === APP_BUILD) { try { sessionStorage.removeItem('reloadTry'); } catch (e) { /* */ } return false; }
@@ -2016,23 +2016,24 @@ function exportPOExcel() {
 
 /* ---------------- รายชื่อร้าน */
 
-function showSuppliers() {
+function showSuppliers(focusNew) {
   const list = (S.suppliers || []).filter((s) => s.branch === S.branch).sort((a, b) => (a.id < b.id ? -1 : 1));
   const box = openModal(`<h2>รายชื่อร้านที่สั่งซื้อ · สาขา${esc(branchInfo(S.branch).name)}</h2>
     <table class="grid small"><thead><tr><th>ชื่อร้าน</th><th>เบอร์โทร</th><th>ให้เครดิต</th><th></th></tr></thead><tbody>
-    ${list.map((s) => `<tr data-id="${esc(s.id)}"><td><input name="name" value="${esc(s.name)}"></td><td><input name="phone" value="${esc(s.phone || '')}" style="width:130px"></td>
+    ${list.map((s) => `<tr data-id="${esc(s.id)}"><td><input name="name" class="sup-in" value="${esc(s.name)}"></td><td><input name="phone" class="sup-in" value="${esc(s.phone || '')}"></td>
       <td class="c"><input type="checkbox" name="credit" ${s.credit ? 'checked' : ''}></td><td><button type="button" data-sup-save>บันทึก</button></td></tr>`).join('')}
-    <tr data-id=""><td><input name="name" placeholder="ชื่อร้านใหม่"></td><td><input name="phone" style="width:130px"></td><td class="c"><input type="checkbox" name="credit" checked></td><td><button type="button" class="primary" data-sup-save>เพิ่ม</button></td></tr>
+    <tr data-id="" class="sup-new"><td><input name="name" class="sup-in" placeholder="พิมพ์ชื่อร้านใหม่ตรงนี้"></td><td><input name="phone" class="sup-in" placeholder="เบอร์โทร"></td><td class="c"><input type="checkbox" name="credit" checked></td><td><button type="button" class="primary" data-sup-save>เพิ่ม</button></td></tr>
     </tbody></table>
     <p class="muted">ร้านที่ให้เครดิต: เวลาเลือกร้านในใบสั่งซื้อ ระบบจะตั้งเป็น "เครดิต (รวมจ่ายสิ้นเดือน)" ให้เอง</p>
     <div class="actions"><button type="button" id="sup-close">ปิด</button></div>`);
   $('#sup-close', box).onclick = closeModal;
+  if (focusNew === true) setTimeout(() => $('tr[data-id=""] [name=name]', box).focus(), 50);
   box.onclick = async (ev) => {
     const b = ev.target.closest('[data-sup-save]'); if (!b) return;
     const tr = b.closest('tr');
     const s = { id: tr.dataset.id, branch: S.branch, name: $('[name=name]', tr).value.trim(), phone: $('[name=phone]', tr).value.trim(), credit: $('[name=credit]', tr).checked };
     if (!s.name) return toast('กรุณาใส่ชื่อร้าน');
-    try { await api('saveSupplier', { supplier: s }); toast('บันทึกแล้ว'); await loadSuppliers(S.branch); showSuppliers(); } catch (e) { toast(e.message, 6000); }
+    try { await api('saveSupplier', { supplier: s }); toast('บันทึกแล้ว'); await loadSuppliers(S.branch); if (!s.id && focusNew === true) { closeModal(); $('#po-supplier').value = s.name; $('#po-supplier').dispatchEvent(new Event('change')); return; } showSuppliers(focusNew); } catch (e) { toast(e.message, 6000); }
   };
 }
 
@@ -2058,6 +2059,7 @@ function bindPO() {
   $('#btn-po-summary').onclick = showPOSummary;
   $('#btn-po-excel').onclick = exportPOExcel;
   $('#btn-po-suppliers').onclick = showSuppliers;
+  $('#btn-po-addsup').onclick = () => showSuppliers(true);
   $('#po-table').onclick = (ev) => {
     const b = ev.target.closest('button'); if (!b) return;
     const p = findPOInList(b.dataset.poPrint || b.dataset.poEdit || b.dataset.poPay || b.dataset.poVoid); if (!p) return;

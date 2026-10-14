@@ -7,8 +7,8 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon-192.png">
 <meta name="theme-color" content="#1f4e79">
-<meta name="app-build" content="19">
-<link rel="stylesheet" href="styles.css?v=19">
+<meta name="app-build" content="20">
+<link rel="stylesheet" href="styles.css?v=20">
 </head>
 <body>
 
@@ -197,7 +197,8 @@
       <div class="po-form-head">
         <div class="field"><span>เลขที่</span><b id="po-no">ใบใหม่</b></div>
         <label class="field">วันที่<input type="date" id="po-date"></label>
-        <label class="field grow">ร้านที่สั่งซื้อ<input id="po-supplier" list="po-sup-list" placeholder="เลือกหรือพิมพ์ชื่อร้าน"></label>
+        <label class="field grow">ร้านที่สั่งซื้อ<input id="po-supplier" list="po-sup-list" placeholder="เลือกจากรายชื่อ หรือพิมพ์ชื่อร้านใหม่"></label>
+        <button type="button" id="btn-po-addsup" class="po-addsup">+ เพิ่มร้าน</button>
         <datalist id="po-sup-list"></datalist>
         <label class="field">เบอร์โทรร้าน<input id="po-phone"></label>
       </div>
@@ -337,6 +338,6 @@
 
 <script src="config.js"></script>
 <script src="vendor/xlsx.full.min.js" defer></script>
-<script src="app.js?v=19"></script>
+<script src="app.js?v=20"></script>
 </body>
 </html>
