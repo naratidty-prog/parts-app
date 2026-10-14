@@ -1,7 +1,7 @@
 // เก็บไฟล์แอปไว้ในเครื่อง เพื่อเปิดได้แม้ไม่มีอินเทอร์เน็ต
 // เปลี่ยนเลข VERSION ทุกครั้งที่แก้ไฟล์ในโฟลเดอร์ web เพื่อให้เครื่องลูกโหลดของใหม่
-const VERSION = 'parts-app-v18';
-const FILES = ['./', 'index.html', 'styles.css', 'app.js', 'config.js', 'manifest.webmanifest',
+const VERSION = 'parts-app-v19';
+const FILES = ['./', 'index.html', 'styles.css', 'app.js', 'config.js', 'manifest.webmanifest', 'icons/logo.jpg',
   'vendor/xlsx.full.min.js', 'icons/icon-192.png', 'icons/icon-512.png'];
 
 self.addEventListener('install', (e) => {

@@ -7,8 +7,8 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon-192.png">
 <meta name="theme-color" content="#1f4e79">
-<meta name="app-build" content="18">
-<link rel="stylesheet" href="styles.css?v=18">
+<meta name="app-build" content="19">
+<link rel="stylesheet" href="styles.css?v=19">
 </head>
 <body>
 
@@ -51,6 +51,7 @@
     <button data-tab="estimate">ใบประเมินราคา</button>
     <button data-tab="report">รายงานบันทึกขายอะไหล่</button>
     <button data-tab="control">พิมพ์ใบคุม</button>
+    <button data-tab="po">ใบสั่งซื้อ</button>
     <button data-tab="customers">ลูกค้า</button>
     <button data-tab="admin" class="admin-only">แอดมิน</button>
   </nav>
@@ -190,6 +191,59 @@
     <div id="ctl-preview" class="preview"></div>
   </main>
 
+  <!-- ใบสั่งซื้ออะไหล่จากร้านอื่น (ข้อมูลแยกจากอะไหล่ที่ขาย) -->
+  <main id="tab-po" class="tab hidden no-print">
+    <div class="card">
+      <div class="po-form-head">
+        <div class="field"><span>เลขที่</span><b id="po-no">ใบใหม่</b></div>
+        <label class="field">วันที่<input type="date" id="po-date"></label>
+        <label class="field grow">ร้านที่สั่งซื้อ<input id="po-supplier" list="po-sup-list" placeholder="เลือกหรือพิมพ์ชื่อร้าน"></label>
+        <datalist id="po-sup-list"></datalist>
+        <label class="field">เบอร์โทรร้าน<input id="po-phone"></label>
+      </div>
+      <div class="row po-term" id="po-term">
+        <b>การชำระเงิน</b>
+        <label><input type="radio" name="po-term" value="เครดิต" checked> เครดิต (รวมจ่ายสิ้นเดือน)</label>
+        <label><input type="radio" name="po-term" value="ชำระเลย"> ชำระเลย (เบิกเงินจ่ายทันที)</label>
+        <label class="grow">หมายเหตุ<input id="po-note" class="grow"></label>
+      </div>
+      <table class="grid po-lines" id="po-lines">
+        <thead><tr><th style="width:40px">#</th><th>รายการ</th><th style="width:90px" class="num">จำนวน</th><th style="width:120px" class="num">ราคาต่อหน่วย</th><th style="width:120px" class="num">จำนวนเงิน</th><th style="width:40px"></th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <datalist id="po-item-list"></datalist>
+      <div class="row po-foot">
+        <button type="button" id="btn-po-line">+ เพิ่มบรรทัด</button>
+        <span class="grow"></span>
+        <span>รวมเป็นเงิน <b id="po-total">0.00</b> บาท</span>
+      </div>
+      <div class="row po-actions">
+        <button type="button" id="btn-po-new">ล้างหน้าจอ / ใบใหม่</button>
+        <span class="grow"></span>
+        <button type="button" id="btn-po-save">บันทึก</button>
+        <button type="button" id="btn-po-save-print" class="primary">บันทึกและพิมพ์</button>
+      </div>
+    </div>
+    <div class="card row">
+      <label>เดือน<input type="month" id="po-month"></label>
+      <label class="admin-only">สาขา<select id="po-branch"></select></label>
+      <label>แสดง<select id="po-filter"><option value="">ทุกใบในเดือน</option><option value="unpaid">ยังไม่ชำระ</option></select></label>
+      <button type="button" id="btn-po-load">แสดง</button>
+      <span class="grow"></span>
+      <button type="button" id="btn-po-summary" class="primary">ใบสรุปเบิกเงินสิ้นเดือน</button>
+      <button type="button" id="btn-po-excel">ดาวน์โหลด Excel</button>
+      <button type="button" id="btn-po-suppliers">รายชื่อร้าน</button>
+    </div>
+    <p class="muted" id="po-msg"></p>
+    <div class="card scroll-x">
+      <table class="grid small" id="po-table">
+        <thead><tr><th>เลขที่</th><th>วันที่</th><th>ร้าน</th><th>การชำระ</th><th class="num">ยอดเงิน</th><th>สถานะ</th><th>ผู้ออกใบ</th><th></th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <div id="po-preview" class="preview hidden"></div>
+  </main>
+
   <!-- ลูกค้า -->
   <main id="tab-customers" class="tab hidden no-print">
     <div class="card row">
@@ -283,6 +337,6 @@
 
 <script src="config.js"></script>
 <script src="vendor/xlsx.full.min.js" defer></script>
-<script src="app.js?v=18"></script>
+<script src="app.js?v=19"></script>
 </body>
 </html>

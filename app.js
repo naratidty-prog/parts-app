@@ -172,7 +172,7 @@ function closeModal() { $('#modal').classList.add('hidden'); $('#modal-box').inn
 /* ================================================================ เริ่มต้น */
 
 // หน้า index.html กับ app.js ต้องเป็นรุ่นเดียวกัน ถ้าเบราว์เซอร์ยังจำหน้าเก่าไว้ ให้โหลดใหม่เอง (ไม่เกิน 3 ครั้ง)
-const APP_BUILD = '18';
+const APP_BUILD = '19';
 function buildMismatch() {
   const m = document.querySelector('meta[name="app-build"]');
   if (m && m.content === APP_BUILD) { try { sessionStorage.removeItem('reloadTry'); } catch (e) { /* */ } return false; }
@@ -266,6 +266,7 @@ function fillBranchSelects() {
   $('#rep-branch').innerHTML = '<option value="*">ทุกสาขา</option>' + opts;
   $('#rep-branch').value = S.branch;
   $('#ctl-branch').innerHTML = opts; $('#ctl-branch').value = S.branch;
+  $('#po-branch').innerHTML = opts; $('#po-branch').value = S.branch;
   $('#user-branch').innerHTML = opts;
 }
 
@@ -1725,6 +1726,353 @@ async function importPartsFile(file) {
   } catch (e) { msg.textContent = 'ผิดพลาด: ' + e.message; }
 }
 
+/* ================================================================ ใบสั่งซื้ออะไหล่ (สั่งจากร้านอื่น) */
+// รายการในใบสั่งซื้อพิมพ์เองทั้งหมด แยกจากรายการอะไหล่ที่ขาย ระบบจำชื่อที่เคยพิมพ์ไว้ให้เลือก
+// ต้องต่อเน็ตตอนบันทึก เพราะเลขที่ใบสั่งซื้อออกที่ระบบกลาง (เลขในสาขาเรียงต่อกันเสมอ)
+
+const PO_CREDIT = 'เครดิต', PO_CASH = 'ชำระเลย';
+const PO_MIN_ROWS = 5;
+const TH_MONTHS = ['มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน', 'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'];
+const TH_MON = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+function thDateLong(iso) { if (!iso) return ''; const [y, m, d] = String(iso).slice(0, 10).split('-'); return `${num(d)} ${TH_MON[num(m) - 1]} ${num(y) + 543}`; }
+function monthName(ym) { const [y, m] = ym.split('-'); return `${TH_MONTHS[num(m) - 1]} ${num(y) + 543}`; }
+function monthRange(ym) { const [y, m] = ym.split('-').map(Number); return { from: `${ym}-01`, to: `${ym}-${pad(new Date(y, m, 0).getDate(), 2)}` }; }
+const poTermText = (t) => (t === PO_CASH ? 'ชำระเลย' : 'เครดิต (รวมจ่ายสิ้นเดือน)');
+
+async function loadSuppliers(branch) {
+  try { S.suppliers = await api('suppliers', { branch }); S.suppliersBranch = branch; } catch (e) { S.suppliers = S.suppliers || []; toast(e.message); }
+  $('#po-sup-list').innerHTML = S.suppliers.filter((s) => s.branch === branch).map((s) => `<option value="${esc(s.name)}">`).join('');
+}
+function supplierByName(name) { return (S.suppliers || []).find((s) => s.branch === S.branch && s.name === String(name).trim()); }
+
+async function openPOTab() {
+  if (!$('#po-month').value) $('#po-month').value = todayISO().slice(0, 7);
+  if (!$('#po-branch').options.length) fillBranchSelects();
+  if (S.suppliersBranch !== S.branch) await loadSuppliers(S.branch);
+  if (!S.po || S.po.branch !== S.branch) newPO();
+  if (!S.poList || S.poList.branch !== (isAdmin() ? $('#po-branch').value || S.branch : S.user.branch)) loadPOs();
+}
+
+function newPO() {
+  S.po = { branch: S.branch, po_no: '', lines: [] };
+  $('#po-no').textContent = 'ใบใหม่';
+  $('#po-date').value = todayISO();
+  $('#po-supplier').value = ''; $('#po-phone').value = ''; $('#po-note').value = '';
+  $(`#po-term [value="${PO_CREDIT}"]`).checked = true;
+  renderPOLines();
+}
+
+function editPO(p) {
+  S.po = { branch: p.branch, po_no: p.po_no, lines: p.lines.map((l) => ({ name: l.name, qty: l.qty, unit: l.unit })) };
+  $('#po-no').textContent = p.po_no + ' (แก้ไข)';
+  $('#po-date').value = p.date;
+  $('#po-supplier').value = p.supplier_name; $('#po-phone').value = p.phone || ''; $('#po-note').value = p.note || '';
+  $(`#po-term [value="${p.term === PO_CASH ? PO_CASH : PO_CREDIT}"]`).checked = true;
+  renderPOLines();
+  $('#tab-po').scrollIntoView({ behavior: 'smooth' });
+}
+
+function poLineAmount(l) { return l.unit === '' || l.unit == null || isNaN(Number(l.unit)) ? null : round2(num(l.qty) * num(l.unit)); }
+function renderPOLines() {
+  const L = S.po.lines;
+  while (L.length < PO_MIN_ROWS) L.push({ name: '', qty: '', unit: '' });
+  $('#po-lines tbody').innerHTML = L.map((l, i) => {
+    const a = poLineAmount(l);
+    return `<tr data-i="${i}"><td class="c">${i + 1}</td>
+      <td><input data-k="name" list="po-item-list" value="${esc(l.name)}" placeholder="พิมพ์ชื่ออะไหล่ / รายละเอียด"></td>
+      <td><input data-k="qty" type="number" min="0" step="any" class="num" value="${esc(l.qty)}"></td>
+      <td><input data-k="unit" type="number" min="0" step="any" class="num" value="${esc(l.unit)}"></td>
+      <td class="num po-amt">${a == null || !l.name ? '' : money(a)}</td>
+      <td><button type="button" class="link" data-del="${i}" title="ลบบรรทัด">✕</button></td></tr>`;
+  }).join('');
+  poTotal();
+}
+function poTotal() {
+  const t = S.po.lines.filter((l) => l.name).reduce((s, l) => s + (poLineAmount(l) || 0), 0);
+  $('#po-total').textContent = money(t);
+  return round2(t);
+}
+function onPOLineInput(ev) {
+  const tr = ev.target.closest('tr[data-i]'); if (!tr) return;
+  const l = S.po.lines[num(tr.dataset.i)], k = ev.target.dataset.k;
+  l[k] = ev.target.value;
+  if (k === 'name' && l.name && !l.qty) { l.qty = 1; $('[data-k="qty"]', tr).value = 1; }
+  const a = poLineAmount(l);
+  $('.po-amt', tr).textContent = a == null || !l.name ? '' : money(a);
+  poTotal();
+}
+
+function poForm() {
+  const term = $('#po-term input:checked').value;
+  const lines = S.po.lines.filter((l) => String(l.name).trim()).map((l) => ({ name: String(l.name).trim(), qty: num(l.qty) || 1, unit: l.unit === '' || l.unit == null ? '' : num(l.unit) }));
+  return { po_no: S.po.po_no, branch: S.po.branch, date: $('#po-date').value, supplier_name: $('#po-supplier').value.trim(), phone: $('#po-phone').value.trim(), term, note: $('#po-note').value.trim(), lines };
+}
+
+async function savePO(print) {
+  const f = poForm();
+  if (!f.supplier_name) return toast('กรุณาใส่ชื่อร้าน');
+  if (!f.lines.length) return toast('ยังไม่มีรายการ');
+  if (f.lines.some((l) => l.unit === '') && !confirm('บางรายการยังไม่ได้ใส่ราคา บันทึกไปก่อนเลยไหม?')) return;
+  const sup = supplierByName(f.supplier_name);
+  if (sup) f.supplier_id = sup.id;
+  else if (!confirm(`"${f.supplier_name}" ยังไม่มีในรายชื่อร้าน ระบบจะเพิ่มให้ (เงื่อนไข: ${poTermText(f.term)}) ตกลงไหม?`)) return;
+  $('#btn-po-save').disabled = $('#btn-po-save-print').disabled = true;
+  try {
+    const p = await api('savePO', { po: f });
+    toast(`บันทึกใบสั่งซื้อ ${p.po_no} แล้ว`);
+    if (!sup) await loadSuppliers(S.branch);
+    rememberPOItems([p]);
+    if (print) printPO(p);
+    newPO();
+    if (S.poList && S.poList.branch === p.branch) loadPOs();
+  } catch (e) {
+    toast(e instanceof NetError ? 'บันทึกใบสั่งซื้อต้องต่ออินเทอร์เน็ต: ' + e.message : e.message, 6000);
+  } finally {
+    $('#btn-po-save').disabled = $('#btn-po-save-print').disabled = false;
+  }
+}
+
+function rememberPOItems(list) {
+  S.poItems = S.poItems || new Set();
+  list.forEach((p) => p.lines.forEach((l) => l.name && S.poItems.add(l.name)));
+  $('#po-item-list').innerHTML = Array.from(S.poItems).sort().slice(0, 2000).map((n) => `<option value="${esc(n)}">`).join('');
+}
+
+async function loadPOs() {
+  const branch = isAdmin() ? $('#po-branch').value || S.branch : S.user.branch;
+  const ym = $('#po-month').value || todayISO().slice(0, 7);
+  const { from, to } = monthRange(ym);
+  $('#po-msg').textContent = 'กำลังโหลด…';
+  try {
+    const [list, unpaid] = await Promise.all([api('pos', { branch, from, to }), api('pos', { branch, unpaid: true, to })]);
+    S.poList = { branch, ym, from, to, list, unpaid };
+    rememberPOItems(list);
+    if (!S.poItemsLoaded) { S.poItemsLoaded = true; api('pos', { branch, from: isoAddDays(from, -180), to }).then(rememberPOItems).catch(() => {}); }
+    renderPOList();
+  } catch (e) { $('#po-msg').textContent = e.message; }
+}
+function isoAddDays(iso, n) { const d = new Date(iso + 'T00:00:00'); d.setDate(d.getDate() + n); return `${d.getFullYear()}-${pad(d.getMonth() + 1, 2)}-${pad(d.getDate(), 2)}`; }
+
+function poStatus(p) {
+  if (p.status === 'ยกเลิก') return '<span class="muted">ยกเลิก</span>';
+  return p.paid_date ? `<span class="ok">ชำระแล้ว ${thDate(p.paid_date)}</span>` : '<b class="warn">ยังไม่ชำระ</b>';
+}
+function renderPOList() {
+  const R = S.poList, unpaidOnly = $('#po-filter').value === 'unpaid';
+  const rows = unpaidOnly ? R.unpaid : R.list;
+  const live = R.list.filter((p) => p.status !== 'ยกเลิก');
+  const sum = (a) => a.reduce((s, p) => s + num(p.total), 0);
+  $('#po-msg').textContent = `${branchInfo(R.branch).name} · ${monthName(R.ym)} · ${live.length} ใบ ยอดรวม ${money(sum(live))} บาท · ยังไม่ชำระทั้งหมด ${R.unpaid.length} ใบ ${money(sum(R.unpaid))} บาท`;
+  $('#po-table tbody').innerHTML = rows.map((p) => `<tr class="${p.status === 'ยกเลิก' ? 'void' : ''}">
+      <td>${esc(p.po_no)}</td><td>${thDate(p.date)}</td><td>${esc(p.supplier_name)}</td><td>${p.term === PO_CASH ? 'ชำระเลย' : 'เครดิต'}</td>
+      <td class="num">${money(p.total)}</td><td>${poStatus(p)}</td><td>${esc(p.created_by || '')}</td>
+      <td class="nowrap"><button type="button" data-po-print="${esc(p.po_no)}">พิมพ์</button>
+        ${p.status === 'ยกเลิก' ? '' : `${p.paid_date && p.term === PO_CREDIT ? '' : `<button type="button" data-po-edit="${esc(p.po_no)}">แก้ไข</button>`}
+        <button type="button" data-po-pay="${esc(p.po_no)}">${p.paid_date ? 'ยกเลิกจ่าย' : 'จ่ายแล้ว'}</button>
+        <button type="button" data-po-void="${esc(p.po_no)}">ยกเลิก</button>`}</td></tr>`).join('')
+    || `<tr><td colspan="8" class="muted">${unpaidOnly ? 'ไม่มีใบสั่งซื้อที่ค้างชำระ' : 'ยังไม่มีใบสั่งซื้อในเดือนนี้'}</td></tr>`;
+}
+function findPOInList(no) { const R = S.poList || {}; return (R.list || []).concat(R.unpaid || []).find((p) => p.po_no === no); }
+
+async function payPOs(nos, paid) {
+  const date = paid ? prompt('วันที่จ่ายเงิน (ปปปป-ดด-วว)', todayISO()) : '';
+  if (paid && !/^\d{4}-\d{2}-\d{2}$/.test(String(date || ''))) return;
+  if (!paid && !confirm('ยกเลิกการบันทึกว่าจ่ายเงินแล้ว?')) return;
+  try { await api('payPO', { po_nos: nos, date }); toast(paid ? `บันทึกจ่ายแล้ว ${nos.length} ใบ` : 'ยกเลิกการบันทึกจ่ายแล้ว'); await loadPOs(); if (!$('#po-preview').classList.contains('hidden')) showPOSummary(); }
+  catch (e) { toast(e.message, 6000); }
+}
+async function voidPO(p) {
+  let approval, reason = '';
+  if (!isAdmin()) { const ap = await askApproval('ยกเลิกใบสั่งซื้อ ' + p.po_no, `${esc(p.supplier_name)} ยอด ${money(p.total)} บาท`); if (!ap) return; approval = ap.approval; reason = ap.reason; }
+  else { reason = prompt('เหตุผลที่ยกเลิกใบสั่งซื้อ ' + p.po_no); if (reason == null) return; }
+  try { await api('voidPO', { po_no: p.po_no, approval, reason }); toast('ยกเลิกใบสั่งซื้อแล้ว'); loadPOs(); } catch (e) { toast(e.message, 6000); }
+}
+
+/* ---------------- ใบสั่งซื้อ (พิมพ์ A4 แนวนอน: ต้นฉบับ + สำเนา) */
+
+function poCopyHtml(p, copy) {
+  const br = branchInfo(p.branch);
+  const lines = p.lines || [];
+  const rows = lines.map((l, i) => `<tr><td class="c">${i + 1}</td><td>${esc(l.name)}</td><td class="num">${num(l.qty)}</td>
+      <td class="num">${l.unit === '' || l.unit == null ? '' : money(l.unit)}</td><td class="num">${l.amount === '' || l.amount == null ? '' : money(l.amount)}</td></tr>`).join('');
+  const box = (on) => `<span class="po-box">${on ? '✓' : ''}</span>`;
+  return `<div class="po-copy${p.status === 'ยกเลิก' ? ' po-void' : ''}">
+    <div class="po-top">
+      <img class="po-logo" src="icons/logo.jpg" alt="">
+      <div class="po-co"><div class="po-co-name">${esc(S.settings.shop_name || 'หจก.ประสบชัยกลการ')}</div>
+        <div class="po-co-sub">สาขา${esc(br.name)}${br.address ? ' · ' + esc(br.address) : ''}${br.phone ? ' · โทร ' + esc(br.phone) : ''}</div></div>
+      <div class="po-tag">${copy}</div>
+    </div>
+    <div class="po-titlebar"><div class="po-title">ใบสั่งซื้ออะไหล่</div>
+      <div class="po-meta"><div><span>เลขที่</span><b>${esc(p.po_no)}</b></div><div><span>วันที่</span><b>${thDateLong(p.date)}</b></div></div></div>
+    <div class="po-info">
+      <div><span>ร้าน</span><b>${esc(p.supplier_name)}</b></div>
+      <div><span>โทร</span>${esc(p.phone || '-')}</div>
+      <div class="po-terms">${box(p.term !== PO_CASH)} เครดิต (รวมจ่ายสิ้นเดือน) &nbsp; ${box(p.term === PO_CASH)} ชำระเลย</div>
+    </div>
+    <table class="po-table"><thead><tr><th style="width:8%">ลำดับ</th><th>รายการ</th><th style="width:11%" class="num">จำนวน</th><th style="width:17%" class="num">ราคาต่อหน่วย</th><th style="width:18%" class="num">จำนวนเงิน</th></tr></thead>
+      <tbody>${rows}</tbody></table>
+    <div class="po-sum"><div class="po-words">${num(p.total) ? '(' + esc(bahtText(p.total)) + ')' : ''}</div><div class="po-total"><span>รวมเป็นเงิน</span><b>${money(p.total)}</b></div></div>
+    ${p.note ? `<div class="po-note">หมายเหตุ: ${esc(p.note)}</div>` : ''}
+    <div class="po-sign">
+      <div><div class="po-line"></div>ผู้สั่งซื้อ${p.created_by ? ' (' + esc(p.created_by) + ')' : ''}</div>
+      <div><div class="po-line"></div>ผู้อนุมัติ</div>
+      <div><div class="po-line"></div>ผู้รับของ</div>
+    </div>
+    ${p.status === 'ยกเลิก' ? '<div class="po-stamp">ยกเลิก</div>' : ''}
+  </div>`;
+}
+function poDocHtml(p) { return `<div class="po-sheet">${poCopyHtml(p, 'ต้นฉบับ')}${poCopyHtml(p, 'สำเนา')}</div>`; }
+
+// พิมพ์ หรือเลือกเครื่องพิมพ์ "บันทึกเป็น PDF" ชื่อไฟล์จะตามชื่อเอกสาร
+function printDoc(html, title) {
+  $('#print-area').innerHTML = html;
+  const old = document.title;
+  document.title = title;
+  setTimeout(() => { window.print(); setTimeout(() => { document.title = old; }, 500); }, 80);
+}
+function printPO(p) { printDoc(poDocHtml(p), `ใบสั่งซื้อ ${p.po_no} ${p.supplier_name}`); }
+
+/* ---------------- ใบสรุปเบิกเงินสิ้นเดือน */
+
+// ใบสั่งซื้อที่ต้องเบิกเงิน: แบบเครดิตของเดือนนี้ + ทุกใบที่ยังไม่ชำระ (รวมเดือนก่อน) จัดกลุ่มตามร้าน
+function poSummaryData() {
+  const R = S.poList;
+  const map = new Map();
+  R.list.filter((p) => p.status !== 'ยกเลิก' && p.term !== PO_CASH).concat(R.unpaid).forEach((p) => map.set(p.po_no, p));
+  const groups = new Map();
+  Array.from(map.values()).sort((a, b) => (a.supplier_name + a.po_no < b.supplier_name + b.po_no ? -1 : 1)).forEach((p) => {
+    if (!groups.has(p.supplier_name)) groups.set(p.supplier_name, []);
+    groups.get(p.supplier_name).push(p);
+  });
+  const cash = R.list.filter((p) => p.status !== 'ยกเลิก' && p.term === PO_CASH);
+  return { groups, cash };
+}
+function poItemsText(p) { const n = p.lines.map((l) => l.name + (num(l.qty) !== 1 ? ' x' + num(l.qty) : '')); return n.slice(0, 3).join(', ') + (n.length > 3 ? ` และอีก ${n.length - 3} รายการ` : ''); }
+
+function poSummaryHtml(forPrint) {
+  const R = S.poList, { groups, cash } = poSummaryData(), br = branchInfo(R.branch);
+  let all = 0, unpaid = 0, i = 0;
+  const body = Array.from(groups.entries()).map(([name, list]) => {
+    const t = list.reduce((s, p) => s + num(p.total), 0), u = list.filter((p) => !p.paid_date);
+    all += t; unpaid += u.reduce((s, p) => s + num(p.total), 0);
+    return `<tr class="cs-dev"><td colspan="6">${esc(name)} · ${list.length} ใบ${!forPrint && u.length ? ` <button type="button" class="po-noprint" data-po-paygroup="${esc(u.map((p) => p.po_no).join(','))}">บันทึกจ่ายร้านนี้ (${u.length} ใบ)</button>` : ''}</td></tr>
+      ${list.map((p) => `<tr><td class="c">${++i}</td><td>${esc(p.po_no)}</td><td>${thDate(p.date)}</td><td>${esc(poItemsText(p))}</td>
+        <td class="num">${money(p.total)}</td><td>${p.paid_date ? 'ชำระแล้ว ' + thDate(p.paid_date) : (p.date < R.from ? 'ค้างจากเดือนก่อน' : 'รอจ่าย')}</td></tr>`).join('')}
+      <tr class="cs-sub"><td colspan="4">รวม ${esc(name)}</td><td class="num">${money(t)}</td><td></td></tr>`;
+  }).join('');
+  const cashSum = cash.reduce((s, p) => s + num(p.total), 0);
+  return `<div class="cs-doc po-sum-doc">
+    <div class="cs-head"><div><img class="po-logo-s" src="icons/logo.jpg" alt=""><span class="cs-title">ใบสรุปยอดใบสั่งซื้อเพื่อเบิกเงิน</span><div class="cs-muted">${esc(S.settings.shop_name || 'หจก.ประสบชัยกลการ')} · สาขา${esc(br.name)}</div></div>
+      <div class="cs-date">ประจำเดือน <b>${monthName(R.ym)}</b></div></div>
+    ${body ? `<table class="cs-table"><thead><tr><th style="width:6%">#</th><th style="width:14%">เลขที่</th><th style="width:12%">วันที่</th><th>รายการ</th><th style="width:14%" class="num">ยอดเงิน</th><th style="width:17%">สถานะ</th></tr></thead>
+      <tbody>${body}</tbody>
+      <tfoot><tr class="cs-total"><td colspan="4">รวมทุกร้าน</td><td class="num">${money(all)}</td><td></td></tr></tfoot></table>` : '<p class="muted">ไม่มีใบสั่งซื้อแบบเครดิตหรือที่ค้างชำระ</p>'}
+    <div class="cs-sum po-sum-box">
+      <div class="big"><span>ยอดที่ขอเบิกเงิน (ยังไม่ชำระ)</span><b>${money(unpaid)}</b></div>
+      <div><span>ชำระแล้วในรายการข้างบน</span><b>${money(all - unpaid)}</b></div>
+      <div><span>ใบสั่งซื้อชำระเลยเดือนนี้ (${cash.length} ใบ)</span><b>${money(cashSum)}</b></div>
+    </div>
+    <div class="cs-count">(${esc(bahtText(unpaid))})</div>
+    <div class="cs-sign"><div>ลงชื่อ ...................................<br>ผู้จัดทำ</div><div>ลงชื่อ ...................................<br>ผู้อนุมัติ</div><div>ลงชื่อ ...................................<br>ฝ่ายการเงิน (ผู้จ่ายเงิน)</div></div>
+  </div>`;
+}
+async function showPOSummary() {
+  if (!S.poList) await loadPOs();
+  if (!S.poList) return;
+  $('#po-preview').classList.remove('hidden');
+  $('#po-preview').innerHTML = `<div class="row po-noprint" style="margin-bottom:8px"><b class="grow">ใบสรุปเบิกเงิน ${monthName(S.poList.ym)}</b>
+    <button type="button" id="btn-po-sum-print" class="primary">พิมพ์ / บันทึก PDF</button><button type="button" id="btn-po-sum-close">ปิด</button></div>` + poSummaryHtml(false);
+  $('#po-preview').scrollIntoView({ behavior: 'smooth' });
+}
+function printPOSummary() {
+  const R = S.poList;
+  printDoc(poSummaryHtml(true), `สรุปใบสั่งซื้อ ${branchInfo(R.branch).name} ${monthName(R.ym)}`);
+}
+
+function exportPOExcel() {
+  const R = S.poList;
+  if (!R) return toast('กด "แสดง" ก่อน');
+  if (!window.XLSX) return toast('ตัวสร้าง Excel ยังโหลดไม่เสร็จ ลองใหม่อีกครั้ง');
+  const { groups } = poSummaryData();
+  const sum = [['ใบสรุปยอดใบสั่งซื้อเพื่อเบิกเงิน', '', '', '', '', '', ''], [`สาขา${branchInfo(R.branch).name}`, `ประจำเดือน ${monthName(R.ym)}`, '', '', '', '', ''], [],
+    ['ร้าน', 'เลขที่', 'วันที่', 'การชำระ', 'รายการ', 'ยอดเงิน', 'สถานะ']];
+  let total = 0, unpaid = 0;
+  groups.forEach((list, name) => {
+    list.forEach((p) => { total += num(p.total); if (!p.paid_date) unpaid += num(p.total); sum.push([name, p.po_no, thDate(p.date), p.term, poItemsText(p), round2(num(p.total)), p.paid_date ? 'ชำระแล้ว ' + thDate(p.paid_date) : 'ยังไม่ชำระ']); });
+    sum.push(['', '', '', '', 'รวม ' + name, round2(list.reduce((s, p) => s + num(p.total), 0)), '']);
+  });
+  sum.push([], ['', '', '', '', 'รวมทุกร้าน', round2(total), ''], ['', '', '', '', 'ยอดที่ขอเบิก (ยังไม่ชำระ)', round2(unpaid), '']);
+  const det = [['เลขที่', 'วันที่', 'ร้าน', 'โทร', 'การชำระ', 'ลำดับ', 'รายการ', 'จำนวน', 'ราคาต่อหน่วย', 'จำนวนเงิน', 'ยอดทั้งใบ', 'สถานะ', 'วันที่ชำระ', 'ผู้ออกใบ', 'หมายเหตุ']];
+  R.list.forEach((p) => p.lines.forEach((l, i) => det.push([p.po_no, thDate(p.date), p.supplier_name, p.phone || '', p.term, i + 1, l.name, num(l.qty), l.unit === '' ? '' : round2(num(l.unit)),
+    l.amount === '' ? '' : round2(num(l.amount)), i === 0 ? round2(num(p.total)) : '', p.status === 'ยกเลิก' ? 'ยกเลิก' : p.paid_date ? 'ชำระแล้ว' : 'ยังไม่ชำระ', thDate(p.paid_date), p.created_by || '', p.note || ''])));
+  const wb = XLSX.utils.book_new();
+  const ws1 = XLSX.utils.aoa_to_sheet(sum); ws1['!cols'] = [22, 12, 11, 10, 46, 12, 18].map((w) => ({ wch: w }));
+  const ws2 = XLSX.utils.aoa_to_sheet(det); ws2['!cols'] = [12, 11, 20, 13, 9, 6, 40, 7, 12, 12, 12, 11, 11, 10, 20].map((w) => ({ wch: w }));
+  XLSX.utils.book_append_sheet(wb, ws1, 'สรุปเบิกเงิน');
+  XLSX.utils.book_append_sheet(wb, ws2, 'ใบสั่งซื้อทั้งเดือน');
+  XLSX.writeFile(wb, `ใบสั่งซื้อ_${branchInfo(R.branch).name}_${R.ym}.xlsx`);
+}
+
+/* ---------------- รายชื่อร้าน */
+
+function showSuppliers() {
+  const list = (S.suppliers || []).filter((s) => s.branch === S.branch).sort((a, b) => (a.id < b.id ? -1 : 1));
+  const box = openModal(`<h2>รายชื่อร้านที่สั่งซื้อ · สาขา${esc(branchInfo(S.branch).name)}</h2>
+    <table class="grid small"><thead><tr><th>ชื่อร้าน</th><th>เบอร์โทร</th><th>ให้เครดิต</th><th></th></tr></thead><tbody>
+    ${list.map((s) => `<tr data-id="${esc(s.id)}"><td><input name="name" value="${esc(s.name)}"></td><td><input name="phone" value="${esc(s.phone || '')}" style="width:130px"></td>
+      <td class="c"><input type="checkbox" name="credit" ${s.credit ? 'checked' : ''}></td><td><button type="button" data-sup-save>บันทึก</button></td></tr>`).join('')}
+    <tr data-id=""><td><input name="name" placeholder="ชื่อร้านใหม่"></td><td><input name="phone" style="width:130px"></td><td class="c"><input type="checkbox" name="credit" checked></td><td><button type="button" class="primary" data-sup-save>เพิ่ม</button></td></tr>
+    </tbody></table>
+    <p class="muted">ร้านที่ให้เครดิต: เวลาเลือกร้านในใบสั่งซื้อ ระบบจะตั้งเป็น "เครดิต (รวมจ่ายสิ้นเดือน)" ให้เอง</p>
+    <div class="actions"><button type="button" id="sup-close">ปิด</button></div>`);
+  $('#sup-close', box).onclick = closeModal;
+  box.onclick = async (ev) => {
+    const b = ev.target.closest('[data-sup-save]'); if (!b) return;
+    const tr = b.closest('tr');
+    const s = { id: tr.dataset.id, branch: S.branch, name: $('[name=name]', tr).value.trim(), phone: $('[name=phone]', tr).value.trim(), credit: $('[name=credit]', tr).checked };
+    if (!s.name) return toast('กรุณาใส่ชื่อร้าน');
+    try { await api('saveSupplier', { supplier: s }); toast('บันทึกแล้ว'); await loadSuppliers(S.branch); showSuppliers(); } catch (e) { toast(e.message, 6000); }
+  };
+}
+
+function bindPO() {
+  $('#po-lines tbody').addEventListener('input', onPOLineInput);
+  $('#po-lines tbody').addEventListener('click', (ev) => {
+    const d = ev.target.closest('[data-del]'); if (!d) return;
+    S.po.lines.splice(num(d.dataset.del), 1); renderPOLines();
+  });
+  $('#btn-po-line').onclick = () => { S.po.lines.push({ name: '', qty: '', unit: '' }); renderPOLines(); $$('#po-lines [data-k="name"]').pop().focus(); };
+  $('#po-supplier').addEventListener('change', () => {
+    const s = supplierByName($('#po-supplier').value); if (!s) return;
+    if (s.phone) $('#po-phone').value = s.phone;
+    $(`#po-term [value="${s.credit ? PO_CREDIT : PO_CASH}"]`).checked = true;
+  });
+  $('#btn-po-new').onclick = () => { if (!S.po.lines.some((l) => l.name) || confirm('ล้างหน้าจอใบสั่งซื้อนี้?')) newPO(); };
+  $('#btn-po-save').onclick = () => savePO(false);
+  $('#btn-po-save-print').onclick = () => savePO(true);
+  $('#btn-po-load').onclick = loadPOs;
+  $('#po-month').onchange = loadPOs;
+  $('#po-branch').onchange = loadPOs;
+  $('#po-filter').onchange = () => S.poList && renderPOList();
+  $('#btn-po-summary').onclick = showPOSummary;
+  $('#btn-po-excel').onclick = exportPOExcel;
+  $('#btn-po-suppliers').onclick = showSuppliers;
+  $('#po-table').onclick = (ev) => {
+    const b = ev.target.closest('button'); if (!b) return;
+    const p = findPOInList(b.dataset.poPrint || b.dataset.poEdit || b.dataset.poPay || b.dataset.poVoid); if (!p) return;
+    if (b.dataset.poPrint) printPO(p);
+    else if (b.dataset.poEdit) editPO(p);
+    else if (b.dataset.poPay) payPOs([p.po_no], !p.paid_date);
+    else if (b.dataset.poVoid) voidPO(p);
+  };
+  $('#po-preview').onclick = (ev) => {
+    if (ev.target.id === 'btn-po-sum-print') printPOSummary();
+    else if (ev.target.id === 'btn-po-sum-close') { $('#po-preview').classList.add('hidden'); $('#po-preview').innerHTML = ''; }
+    else if (ev.target.dataset.poPaygroup) payPOs(ev.target.dataset.poPaygroup.split(','), true);
+  };
+}
+
 /* ================================================================ ผูกปุ่ม */
 
 function switchTab(name) {
@@ -1735,6 +2083,7 @@ function switchTab(name) {
   if (name === 'print' && S.printBill) renderPrintPreview(S.printBill);
   if (name === 'admin') loadAudit();
   if (name === 'control') { if (!$('#ctl-date').value) $('#ctl-date').value = todayISO(); loadControl(); }
+  if (name === 'po') openPOTab();
   if (name === 'estimate') { if (!S.est || S.est.branch !== S.branch) newEstimate(); $('#est-scan').focus(); }
 }
 
@@ -1828,6 +2177,7 @@ function bindStatic() {
   $('#btn-ctl-load').onclick = loadControl;
   $('#ctl-preview').onclick = (e) => { const tr = e.target.closest('[data-bill]'); if (tr) openBill(tr.dataset.bill); };
   $('#btn-ctl-print').onclick = printControlSheet;
+  bindPO();
   $('#sale-dev').onclick = (ev) => { ev.preventDefault(); changeDevice(); };
   $('#ctl-date').onchange = loadControl;
   $('#ctl-branch').onchange = loadControl;
