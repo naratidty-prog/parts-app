@@ -7,8 +7,8 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon-192.png">
 <meta name="theme-color" content="#1f4e79">
-<meta name="app-build" content="20">
-<link rel="stylesheet" href="styles.css?v=20">
+<meta name="app-build" content="21">
+<link rel="stylesheet" href="styles.css?v=21">
 </head>
 <body>
 
@@ -153,8 +153,14 @@
       <div class="actions">
         <button id="est-void" class="ghost danger-text">ยกเลิกใบนี้</button>
         <button id="est-save">บันทึก</button>
-        <button id="est-save-print" class="primary">บันทึกและพิมพ์</button>
-        <button id="est-to-bill" class="primary alt">เปิดบิลขายจากใบประเมิน</button>
+        <button id="est-save-print" class="primary">บันทึกและพิมพ์ / PDF</button>
+      </div>
+      <div class="row est-outcome">
+        <b>ผลของใบประเมิน</b>
+        <button id="est-close" class="ghost">1. ปิดงาน (ไม่ซ่อม / ไม่ซื้อ)</button>
+        <button id="est-to-bill" class="primary alt">2. เปิดบิลขาย</button>
+        <button id="est-to-ws" class="ghost">3. ส่งขายส่ง (ดาวน์โหลด Excel)</button>
+        <button id="est-reopen" class="ghost hidden">เปิดใบนี้กลับมาแก้ไข</button>
       </div>
     </div>
   </main>
@@ -338,6 +344,6 @@
 
 <script src="config.js"></script>
 <script src="vendor/xlsx.full.min.js" defer></script>
-<script src="app.js?v=20"></script>
+<script src="app.js?v=21"></script>
 </body>
 </html>

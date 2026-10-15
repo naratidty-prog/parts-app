@@ -292,3 +292,5 @@ button.link:hover { color: #b3261e; }
 .po-addsup { align-self: flex-end; white-space: nowrap; }
 .sup-in { width: 100%; min-width: 150px; box-sizing: border-box; text-align: left !important; }
 tr.sup-new td { background: #fff8e1; }
+.est-outcome { justify-content: flex-end; margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--line); }
+.est-outcome b { margin-right: auto; color: var(--muted); font-weight: 600; }

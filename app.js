@@ -172,7 +172,7 @@ function closeModal() { $('#modal').classList.add('hidden'); $('#modal-box').inn
 /* ================================================================ เริ่มต้น */
 
 // หน้า index.html กับ app.js ต้องเป็นรุ่นเดียวกัน ถ้าเบราว์เซอร์ยังจำหน้าเก่าไว้ ให้โหลดใหม่เอง (ไม่เกิน 3 ครั้ง)
-const APP_BUILD = '20';
+const APP_BUILD = '21';
 function buildMismatch() {
   const m = document.querySelector('meta[name="app-build"]');
   if (m && m.content === APP_BUILD) { try { sessionStorage.removeItem('reloadTry'); } catch (e) { /* */ } return false; }
@@ -1082,7 +1082,7 @@ function afterBillChange() {
 // บันทึกแยกจากบิลขาย ไม่นับเป็นยอดขาย แก้ไขได้โดยไม่ต้องใช้รหัสแอดมิน
 // เปิดบิลขายจากใบประเมินได้ โดยเลือกรายการอะไหล่ที่จะเอาไปขาย
 
-const EST_OPEN = 'ประเมิน', EST_BILLED = 'เปิดบิลแล้ว', EST_VOID = 'ยกเลิก';
+const EST_OPEN = 'ประเมิน', EST_BILLED = 'เปิดบิลแล้ว', EST_VOID = 'ยกเลิก', EST_CLOSED = 'ปิดงาน', EST_WHOLESALE = 'ส่งขายส่ง';
 const EST_FIELDS = { date: 'est-date', phone: 'est-phone', address: 'est-address', engine_no: 'est-engine', plate: 'est-plate', color: 'est-color', mechanic: 'est-mechanic', note: 'est-note' };
 
 function newEstimate() {
@@ -1120,6 +1120,8 @@ function renderEstimate() {
   $('#est-no').textContent = e.est_no || '(ใบใหม่ ยังไม่บันทึก)';
   $('#est-status').innerHTML = e.status === EST_BILLED ? `<span class="badge">เปิดบิลแล้ว ${esc(e.bill_no)}</span>`
     : e.status === EST_VOID ? '<span class="badge void">ยกเลิก</span>'
+    : e.status === EST_CLOSED ? '<span class="badge void">ปิดงาน (ไม่ซ่อม / ไม่ซื้อ)</span>'
+    : e.status === EST_WHOLESALE ? '<span class="badge">ส่งขายส่งแล้ว</span>'
     : e._sync === 'pending' ? '<span class="badge pending">รอส่ง</span>' : e._sync === 'error' ? `<span class="badge error">ส่งไม่สำเร็จ: ${esc(e._error)}</span>` : '';
   $('#est-table tbody').innerHTML = e.lines.map((l, i) => `<tr>
     <td>${i + 1}</td><td>${esc(l.code)}</td><td>${esc(l.name)}</td><td>${esc(l.model)}</td>
@@ -1131,6 +1133,58 @@ function renderEstimate() {
   $('#est-total').textContent = money(e.lines.reduce((s, l) => s + num(l.qty) * num(l.unit), 0));
   $$('#tab-estimate .est-head input, #est-scan, #est-note, #est-search, #est-free, #est-save, #est-void').forEach((el) => { el.disabled = locked; });
   $('#est-to-bill').disabled = locked || !e.lines.length;
+  $('#est-to-ws').disabled = locked || !e.lines.some((l) => l.code);
+  $('#est-close').disabled = locked || !e.est_no;
+  $('#est-reopen').classList.toggle('hidden', !(e.status === EST_CLOSED || e.status === EST_WHOLESALE));
+  $('#est-save-print').textContent = locked ? 'พิมพ์ / PDF' : 'บันทึกและพิมพ์ / PDF';
+}
+
+// 1. ไม่ซ่อม / ไม่ซื้อ: ปิดใบประเมิน (เก็บไว้ดูย้อนหลัง ไม่นับเป็นงานค้าง)
+async function closeEstimate() {
+  if (!S.est.est_no) return toast('บันทึกใบประเมินก่อน');
+  const why = prompt('ปิดงานใบ ' + S.est.est_no + ' (ลูกค้าไม่ซ่อม / ไม่ซื้อ)\nเหตุผล (ไม่ใส่ก็ได้)', '');
+  if (why == null) return;
+  const e = estimateFromForm();
+  e.status = EST_CLOSED;
+  if (why.trim()) e.note = [e.note, 'ปิดงาน: ' + why.trim()].filter(Boolean).join(' · ');
+  await putEstimate(e);
+  S.est = e;
+  $('#est-note').value = e.note || '';
+  renderEstimate();
+  toast('ปิดงานใบประเมินแล้ว');
+}
+
+// 3. ขายส่ง: ดาวน์โหลด Excel แบบเดียวกับไฟล์ตัวอย่างนำเข้าออเดอร์ของระบบขายส่ง (รหัสอะไหล่ / จำนวน / ชื่อ)
+// แล้วไปกด "นำเข้า Excel" ที่หน้ารับออเดอร์ของระบบขายส่ง รายการที่ไม่มีรหัส (เช่น ค่าแรง) จะไม่ถูกส่งไป
+async function estimateToWholesale() {
+  const e = estimateFromForm();
+  const lines = e.lines.filter((l) => l.code);
+  if (!lines.length) return toast('ไม่มีรายการที่มีรหัสอะไหล่');
+  if (!window.XLSX) return toast('ตัวสร้าง Excel ยังโหลดไม่เสร็จ ลองใหม่อีกครั้ง');
+  const skipped = e.lines.length - lines.length;
+  if (!confirm(`ส่งใบ ${e.est_no || '(ใบใหม่)'} ไปขายส่ง ${lines.length} รายการ${skipped ? ` (รายการไม่มีรหัส ${skipped} รายการจะไม่ถูกส่ง)` : ''}\nระบบจะบันทึกใบนี้เป็น "ส่งขายส่ง" และดาวน์โหลดไฟล์ Excel`)) return;
+  e.status = EST_WHOLESALE;
+  if (!e.est_no) { try { e.est_no = await takeNumber(S.branch, 'est'); } catch (err) { return toast(err.message, 6000); } e.created_at = new Date().toISOString(); }
+  await putEstimate(e);
+  S.est = e;
+  renderEstimate();
+  const rows = [['รหัสอะไหล่', 'จำนวน', 'ชื่ออะไหล่ (ไม่ต้องใส่ก็ได้)'], ...lines.map((l) => [l.code, num(l.qty), l.name])];
+  const ws = XLSX.utils.aoa_to_sheet(rows); ws['!cols'] = [{ wch: 20 }, { wch: 8 }, { wch: 40 }];
+  const info = XLSX.utils.aoa_to_sheet([['ใบประเมิน', e.est_no], ['วันที่', thDate(e.date)], ['ลูกค้า', e.customer_name], ['เบอร์โทร', e.phone || ''], ['สาขา', branchInfo(e.branch).name], ['ยอดตามใบประเมิน', e.total]]);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'รายการสั่ง');
+  XLSX.utils.book_append_sheet(wb, info, 'ข้อมูลใบประเมิน');
+  XLSX.writeFile(wb, `ส่งขายส่ง_${e.est_no}_${String(e.customer_name || '').replace(/[\\/:*?"<>|]/g, '')}.xlsx`);
+  toast('ดาวน์โหลดไฟล์แล้ว นำไปกด "นำเข้า Excel" ที่หน้ารับออเดอร์ของระบบขายส่ง', 7000);
+}
+
+async function reopenEstimate() {
+  if (!confirm('เปิดใบ ' + S.est.est_no + ' กลับมาเป็นใบประเมินที่ยังไม่ปิดงาน?')) return;
+  const e = estimateFromForm();
+  e.status = EST_OPEN;
+  await putEstimate(e);
+  S.est = e;
+  renderEstimate();
 }
 
 function addEstimateLine(p, qty = 1) {
@@ -1299,10 +1353,8 @@ function estimateHtml(e) {
   </div>`;
 }
 
-function printEstimate(e) {
-  $('#print-area').innerHTML = estimateHtml(e);
-  setTimeout(() => window.print(), 50);
-}
+// พิมพ์ หรือเลือกเครื่องพิมพ์ "บันทึกเป็น PDF" เพื่อส่งให้ลูกค้า (ชื่อไฟล์ = เลขที่ใบ + ชื่อลูกค้า)
+function printEstimate(e) { printDoc(estimateHtml(e), `ใบประเมินราคา ${e.est_no} ${e.customer_name || ''}`.trim()); }
 
 async function estimateList() {
   const box = openModal(`<h2>ค้นหาใบประเมินราคา</h2>
@@ -2214,6 +2266,9 @@ function bindStatic() {
   $('#est-save-print').onclick = () => (S.est.status === EST_OPEN ? saveEstimate(true) : printEstimate(S.est));
   $('#est-void').onclick = voidEstimate;
   $('#est-to-bill').onclick = estimateToBill;
+  $('#est-close').onclick = closeEstimate;
+  $('#est-to-ws').onclick = estimateToWholesale;
+  $('#est-reopen').onclick = reopenEstimate;
   $('#pending-parts-body').onclick = onPendingPartClick;
   $('#special-parts-body').onclick = (e) => {
     const code = e.target.dataset.editPart; if (!code) return;
