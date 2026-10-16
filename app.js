@@ -172,7 +172,7 @@ function closeModal() { $('#modal').classList.add('hidden'); $('#modal-box').inn
 /* ================================================================ เริ่มต้น */
 
 // หน้า index.html กับ app.js ต้องเป็นรุ่นเดียวกัน ถ้าเบราว์เซอร์ยังจำหน้าเก่าไว้ ให้โหลดใหม่เอง (ไม่เกิน 3 ครั้ง)
-const APP_BUILD = '21';
+const APP_BUILD = '22';
 function buildMismatch() {
   const m = document.querySelector('meta[name="app-build"]');
   if (m && m.content === APP_BUILD) { try { sessionStorage.removeItem('reloadTry'); } catch (e) { /* */ } return false; }
@@ -1688,21 +1688,42 @@ async function saveBranchDiscounts(ev) {
 function renderPendingParts() {
   const rows = S.partsList.filter((p) => p.status === PART_PENDING);
   $('#pending-parts-card').classList.toggle('hidden', !rows.length);
+  $('#pending-parts-count').textContent = rows.length ? `(${rows.length} รายการ)` : '';
   $('#pending-parts-body').innerHTML = rows.map((p) => `<tr><td>${esc(p.code)}</td><td>${esc(p.name)}</td><td>${esc(p.model)}</td>
     <td class="num">${money(p.price)}</td><td>${esc(p.addedBy)}</td>
     <td><button type="button" class="primary" data-approve="${esc(p.code)}">ยืนยัน</button> <button type="button" data-fix="${esc(p.code)}">แก้ไข</button></td></tr>`).join('');
 }
 
+// ยืนยันอะไหล่รอตรวจ: ส่งขึ้นระบบ แล้วแก้สถานะในเครื่องทันที (ไม่ต้องรอโหลดข้อมูลอะไหล่ใหม่)
+async function approveParts(parts, btn) {
+  const label = btn.textContent;
+  btn.disabled = true; btn.textContent = 'กำลังยืนยัน…';
+  try {
+    await api('saveParts', { parts: parts.map((p) => ({ code: p.code, name: p.name, model: p.model, cost: p.cost, price_ex: '', price: p.price, max_disc: '', approve: true })) });
+    parts.forEach((p) => { p.status = ''; p.maxDisc = ''; });
+    await DB.putMany('parts', parts);
+    toast(parts.length === 1 ? 'ยืนยันอะไหล่ ' + parts[0].code + ' แล้ว' : `ยืนยันอะไหล่ ${parts.length} รายการแล้ว`);
+    renderPendingParts(); renderCart();
+    syncParts().then(renderPendingParts);
+  } catch (err) {
+    btn.disabled = false; btn.textContent = label;
+    toast(err instanceof NetError ? 'ต้องต่ออินเทอร์เน็ตก่อน' : 'ยืนยันไม่สำเร็จ: ' + err.message, 6000);
+  }
+}
+
 async function onPendingPartClick(e) {
-  const code = e.target.dataset.approve || e.target.dataset.fix;
+  const b = e.target.closest('button');
+  const code = b && (b.dataset.approve || b.dataset.fix);
   const p = code && findPart(code);
   if (!p) return;
-  if (e.target.dataset.fix) { fillPartForm(p); return; }
-  try {
-    await api('saveParts', { parts: [{ code: p.code, name: p.name, model: p.model, cost: p.cost, price_ex: '', price: p.price, max_disc: '', approve: true }] });
-    toast('ยืนยันอะไหล่ ' + p.code + ' แล้ว');
-    await syncParts(); renderPendingParts();
-  } catch (err) { toast(err instanceof NetError ? 'ต้องต่ออินเทอร์เน็ตก่อน' : err.message); }
+  if (b.dataset.fix) { fillPartForm(p); return; }
+  approveParts([p], b);
+}
+
+function approveAllParts(e) {
+  const rows = S.partsList.filter((p) => p.status === PART_PENDING);
+  if (!rows.length || !confirm(`ยืนยันอะไหล่รอตรวจทั้งหมด ${rows.length} รายการ ตามชื่อและราคาที่แสดงอยู่?`)) return;
+  approveParts(rows, e.target);
 }
 
 function fillPartForm(p) {
@@ -2270,6 +2291,7 @@ function bindStatic() {
   $('#est-to-ws').onclick = estimateToWholesale;
   $('#est-reopen').onclick = reopenEstimate;
   $('#pending-parts-body').onclick = onPendingPartClick;
+  $('#btn-approve-all').onclick = approveAllParts;
   $('#special-parts-body').onclick = (e) => {
     const code = e.target.dataset.editPart; if (!code) return;
     $$('.subtabs button').find((b) => b.dataset.sub === 'parts').click(); fillPartForm(findPart(code));

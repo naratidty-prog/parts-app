@@ -7,8 +7,8 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon-192.png">
 <meta name="theme-color" content="#1f4e79">
-<meta name="app-build" content="21">
-<link rel="stylesheet" href="styles.css?v=21">
+<meta name="app-build" content="22">
+<link rel="stylesheet" href="styles.css?v=22">
 </head>
 <body>
 
@@ -292,7 +292,7 @@
         <div class="actions"><button class="primary" type="submit">บันทึกอะไหล่</button></div>
       </form>
       <div class="card" id="pending-parts-card">
-        <h3>อะไหล่ที่พนักงานเพิ่มด่วน (รอตรวจ)</h3>
+        <div class="row-between"><h3>อะไหล่ที่พนักงานเพิ่มด่วน (รอตรวจ) <span id="pending-parts-count" class="muted small"></span></h3><button type="button" class="primary" id="btn-approve-all">ยืนยันทั้งหมด</button></div>
         <p class="small muted">ตรวจชื่อและราคา แล้วกด ยืนยัน ถ้าต้องแก้ให้กด แก้ไข ข้อมูลจะขึ้นในฟอร์มด้านบน ระหว่างรอตรวจ อะไหล่ตัวนี้ลดราคาไม่ได้</p>
         <table class="grid small"><thead><tr><th>รหัส</th><th>ชื่ออะไหล่</th><th>รุ่น</th><th class="num">ราคา</th><th>ผู้เพิ่ม</th><th></th></tr></thead><tbody id="pending-parts-body"></tbody></table>
       </div>
@@ -344,6 +344,6 @@
 
 <script src="config.js"></script>
 <script src="vendor/xlsx.full.min.js" defer></script>
-<script src="app.js?v=21"></script>
+<script src="app.js?v=22"></script>
 </body>
 </html>

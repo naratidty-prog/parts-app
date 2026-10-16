@@ -294,3 +294,5 @@ button.link:hover { color: #b3261e; }
 tr.sup-new td { background: #fff8e1; }
 .est-outcome { justify-content: flex-end; margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--line); }
 .est-outcome b { margin-right: auto; color: var(--muted); font-weight: 600; }
+.row-between { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+.row-between h3 { margin: 0; }
