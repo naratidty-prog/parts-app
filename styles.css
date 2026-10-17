@@ -140,11 +140,10 @@ tr.ret td { color: var(--bad); }
   .receipt { border: 0 !important; }
   .receipt + .receipt { border-top: 1px dashed #999 !important; }
   /* ใบเบิก/ใบสั่งซื้อ: ขอบกระดาษ 0 เพื่อให้ Chrome ไม่พิมพ์วันที่ ชื่อเว็บ เลขหน้า แล้วเว้นขอบเองแทน */
-  .receipt { page: rc; margin-left: 10mm; }
+  .receipt { margin-left: 10mm; }
   .receipt:first-child, .receipt.long + .receipt { margin-top: 8mm; }
   .po-sheet { margin: 7mm; }
 }
-@page rc { size: A4 portrait; margin: 0; }
 @media (max-width: 700px) {
   .tab { padding: 0 8px 20px; }
   .tot-grid { grid-template-columns: auto 120px; }
@@ -332,3 +331,21 @@ tr.sup-new td { background: #fff8e1; }
 .est-outcome b { margin-right: auto; color: var(--muted); font-weight: 600; }
 .row-between { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
 .row-between h3 { margin: 0; }
+
+/* หน้าจอรอ (ล้อหน้ายิ้ม): บังทั้งจอระหว่างรอระบบ กันกดซ้ำ */
+.busy { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; background: rgba(241, 243, 246, .7); backdrop-filter: blur(2px); cursor: wait; }
+.busy[hidden] { display: none; }
+.busy-card { background: #fff; border-radius: 16px; padding: 22px 30px; box-shadow: 0 10px 30px rgba(0,0,0,.18); display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; }
+.busy-buddy { position: relative; width: 84px; height: 84px; }
+.busy-buddy svg { position: absolute; inset: 0; width: 84px; height: 84px; }
+.busy-tire { animation: busy-spin 1.4s linear infinite; }
+.busy-eye { transform-box: fill-box; transform-origin: center; animation: busy-blink 3s infinite; }
+.busy-msg { font-size: 17px; font-weight: 600; color: #1d2733; }
+.busy-dots { display: inline-flex; gap: 3px; margin-left: 4px; }
+.busy-dots i { width: 5px; height: 5px; border-radius: 50%; background: currentColor; animation: busy-dot 1.2s infinite; }
+.busy-dots i:nth-child(2) { animation-delay: .2s; } .busy-dots i:nth-child(3) { animation-delay: .4s; }
+.busy-what { font-size: 14px; color: #5d6b7a; }
+.busy-slow { font-size: 13px; color: #8a5a00; }
+@keyframes busy-spin { to { transform: rotate(360deg); } }
+@keyframes busy-blink { 0%, 92%, 100% { transform: scaleY(1); } 95% { transform: scaleY(.1); } }
+@keyframes busy-dot { 0%, 60%, 100% { opacity: .25; transform: translateY(0); } 30% { opacity: 1; transform: translateY(-3px); } }

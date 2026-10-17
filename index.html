@@ -7,8 +7,8 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon-192.png">
 <meta name="theme-color" content="#1f4e79">
-<meta name="app-build" content="26">
-<link rel="stylesheet" href="styles.css?v=26">
+<meta name="app-build" content="27">
+<link rel="stylesheet" href="styles.css?v=27">
 </head>
 <body>
 
@@ -344,6 +344,17 @@
 
 <script src="config.js"></script>
 <script src="vendor/xlsx.full.min.js" defer></script>
-<script src="app.js?v=26"></script>
+<div id="busy" class="busy no-print" hidden aria-live="polite">
+  <div class="busy-card">
+    <div class="busy-buddy">
+      <svg class="busy-tire" viewBox="0 0 84 84" aria-hidden="true"><circle cx="42" cy="42" r="36" fill="none" stroke="#2f343a" stroke-width="10" stroke-dasharray="10 5"/><circle cx="42" cy="42" r="30" fill="none" stroke="#2f343a" stroke-width="3"/></svg>
+      <svg class="busy-face" viewBox="0 0 84 84" aria-hidden="true"><circle cx="42" cy="42" r="26" fill="#ffd166"/><ellipse class="busy-eye" cx="34" cy="38" rx="3" ry="4" fill="#2f343a"/><ellipse class="busy-eye" cx="50" cy="38" rx="3" ry="4" fill="#2f343a"/><circle cx="28" cy="47" r="3.5" fill="#ff8fa3" opacity=".8"/><circle cx="56" cy="47" r="3.5" fill="#ff8fa3" opacity=".8"/><path d="M35 48 Q42 55 49 48" fill="none" stroke="#2f343a" stroke-width="2.5" stroke-linecap="round"/></svg>
+    </div>
+    <div class="busy-msg">รอสักครู่นะคะ<span class="busy-dots"><i></i><i></i><i></i></span></div>
+    <div class="busy-what"></div>
+    <div class="busy-slow" hidden>อินเทอร์เน็ตช้า ระบบยังทำงานอยู่</div>
+  </div>
+</div>
+<script src="app.js?v=27"></script>
 </body>
 </html>
