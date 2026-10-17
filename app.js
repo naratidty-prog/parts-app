@@ -172,7 +172,7 @@ function closeModal() { $('#modal').classList.add('hidden'); $('#modal-box').inn
 /* ================================================================ เริ่มต้น */
 
 // หน้า index.html กับ app.js ต้องเป็นรุ่นเดียวกัน ถ้าเบราว์เซอร์ยังจำหน้าเก่าไว้ ให้โหลดใหม่เอง (ไม่เกิน 3 ครั้ง)
-const APP_BUILD = '22';
+const APP_BUILD = '23';
 function buildMismatch() {
   const m = document.querySelector('meta[name="app-build"]');
   if (m && m.content === APP_BUILD) { try { sessionStorage.removeItem('reloadTry'); } catch (e) { /* */ } return false; }
@@ -854,37 +854,46 @@ function receiptHtml(bill, copy) {
   // ทุกบิลรับเงินครบแล้ว ตัดคำว่า (ค้างจ่าย) ที่อาจค้างอยู่ในชีต Settings ออก
   const title = isRet ? 'ใบคืนอะไหล่' : String(S.settings.receipt_title || 'ใบเบิกอะไหล่').replace(/\s*\(?ค้างจ่าย\)?/g, '').trim() || 'ใบเบิกอะไหล่';
   const lines = bill.lines || [];
-  const rows = Math.max(15, lines.length);
-  let body = '';
-  // ช่องหมายเหตุ: แถวแรก "จ่ายเงินวันที่" ตามแบบเดิม ต่อด้วยประเภทการสั่งและยอดที่จ่ายแล้ว
-  const notes = [isRet ? '' : 'จ่ายเงินวันที่'];
-  if (!isRet && bill.pay_method === PAY_CREDIT) notes.push('<b>ค้างจ่าย</b>', ...(bill.settled_date ? [`ชำระแล้ว ${thDate(bill.settled_date)}`, esc(bill.settled_method + (bill.settled_ref ? ' ' + bill.settled_ref : ''))] : []));
-  else if (!isRet && bill.pay_method) notes.push(`ชำระโดย <b>${esc(bill.pay_method)}</b>`, ...(bill.pay_method === 'โอนเงิน' && bill.pay_ref ? [esc(bill.pay_ref)] : []));
-  if (bill.order_type) notes.push(`<b>${esc(orderText(bill))}</b>`);
-  for (let i = 0; i < rows; i++) {
-    const l = lines[i], n = notes[i] || '';
-    body += l ? `<tr><td class="num">${l.qty}</td><td>${esc(l.code)}</td><td>${esc(l.name)}</td><td>${esc(l.model)}</td><td class="num">${money(l.unit)}</td><td class="num">${money(l.amount)}</td><td class="r-memo">${n}</td></tr>`
-      : `<tr><td></td><td></td><td></td><td></td><td></td><td></td><td class="r-memo">${n}</td></tr>`;
-  }
   const br = branchInfo(bill.branch);
-  return `<div class="receipt ${lines.length > 15 ? 'long' : ''}">
-    <div class="r-copy">${copy}</div>
-    <div class="r-title">${esc(title)}</div>
-    <div class="small" style="text-align:center">${esc(S.settings.shop_name || '')} สาขา${esc(br.name)}${bill.status === 'ยกเลิก' ? ' — <b>ยกเลิกแล้ว</b>' : ''}</div>
-    <div class="r-head">
-      <div>ชื่อ <b>${esc(bill.customer_name)}</b></div><div>เลขที่ <b>${esc(bill.bill_no)}</b></div>
-      <div>ชื่อลูกค้า ${esc(customerFull(c))} ${c && c.address ? ' ' + esc(c.address) : ''}</div><div>วันที่ ${thDate(bill.date)}</div>
-      ${isRet ? `<div>อ้างอิงบิล ${esc(bill.ref_bill)}</div><div></div>` : ''}
+  // วิธีชำระ / ประเภทการสั่ง แสดงเป็นป้ายเล็ก ๆ แทนช่องหมายเหตุแบบเดิม
+  const tags = [];
+  if (!isRet && bill.pay_method === PAY_CREDIT) tags.push(`<span class="rc-chip warn">ค้างจ่าย</span>` + (bill.settled_date ? ` ชำระแล้ว ${thDate(bill.settled_date)} ${esc(bill.settled_method + (bill.settled_ref ? ' ' + bill.settled_ref : ''))}` : ''));
+  else if (!isRet && bill.pay_method) tags.push(`<span class="rc-chip">${esc(bill.pay_method)}</span>` + (bill.pay_method === 'โอนเงิน' && bill.pay_ref ? ' ' + esc(bill.pay_ref) : ''));
+  if (bill.order_type) tags.push(`<span class="rc-chip warn">${esc(orderText(bill))}</span>`);
+  const cus = [customerFull(c), c && c.address].filter(Boolean).join(' · ');
+  const rows = lines.map((l, i) => `<tr><td class="c">${i + 1}</td><td class="code">${esc(l.code)}</td><td>${esc(l.name)}</td><td class="mdl">${esc(l.model)}</td>
+    <td class="num">${l.qty}</td><td class="num">${money(l.unit)}</td><td class="num">${money(l.amount)}</td></tr>`).join('');
+  const meta = [isRet ? `<span>อ้างอิงบิล</span><b>${esc(bill.ref_bill)}</b>` : '', ...tags].filter(Boolean);
+  return `<div class="receipt rc ${lines.length > 15 ? 'long' : ''}${bill.status === 'ยกเลิก' ? ' rc-void' : ''}">
+    <div class="rc-top">
+      <img class="rc-logo" src="icons/logo.jpg" alt="">
+      <div class="rc-co"><div class="rc-co-name">${esc(S.settings.shop_name || 'หจก.ประสบชัยกลการ')}</div>
+        <div class="rc-co-sub">สาขา${esc(br.name)}${br.address ? ' · ' + esc(br.address) : ''} · โทร ${esc(br.phone || S.settings.shop_phone || '')}</div></div>
+      <div class="rc-head"><div class="rc-title">${esc(title)}</div><div class="rc-tag">${copy}</div></div>
     </div>
-    <table><thead><tr><th style="width:9%">จำนวน</th><th style="width:17%">รหัสอะไหล่</th><th>ชื่ออะไหล่</th><th style="width:14%">รุ่น</th><th style="width:10%">หน่วยละ</th><th style="width:12%">จำนวนเงิน</th><th style="width:13%">หมายเหตุ</th></tr></thead>
-    <tbody>${body}</tbody></table>
-    <div class="r-foot">
-      <div>(${esc(bahtText(bill.net))})</div><div>รวม</div><div class="num">${money(bill.total)}</div>
-      <div>${esc(bill.customer_name)}</div><div>ส่วนลด</div><div class="num">${money(bill.discount)}</div>
-      <div>ลงชื่อ.......................................................ผู้รับสินค้า</div><div><b>เป็นเงิน</b></div><div class="num"><b>${money(bill.net)}</b></div>
+    <div class="rc-bar">
+      <div class="rc-cus"><span>ลูกค้า</span><b>${esc(bill.customer_name)}</b></div>
+      <div class="rc-meta"><div><span>เลขที่</span><b>${esc(bill.bill_no)}</b></div><div><span>วันที่</span><b>${thDate(bill.date)}</b></div></div>
     </div>
-    <div class="r-sign">ลงชื่อ...............................................ผู้จัดอะไหล่ (${esc(bill.created_by || '')})&nbsp;&nbsp;&nbsp;ลงชื่อ..................................ผู้ตรวจสอบ</div>
-    ${copy === 'สำหรับลูกค้า' ? `<div class="r-note">${esc(S.settings.receipt_note || '')}<br>${esc(S.settings.receipt_footer || '')}</div>` : ''}
+    <div class="rc-info">
+      <div class="rc-sub">${cus && cus !== bill.customer_name ? esc(cus) : ''}</div>
+      <div class="rc-right">${meta.join(' &nbsp; ')}${isRet ? '' : '<span class="rc-paydate"><span>จ่ายเงินวันที่</span><i></i></span>'}</div>
+    </div>
+    <table class="rc-table"><colgroup><col style="width:5%"><col style="width:19%"><col><col style="width:16%"><col style="width:7%"><col style="width:11%"><col style="width:12%"></colgroup>
+      <thead><tr><th class="c">#</th><th>รหัสอะไหล่</th><th>ชื่ออะไหล่</th><th>รุ่น</th><th class="num">จำนวน</th><th class="num">หน่วยละ</th><th class="num">จำนวนเงิน</th></tr></thead>
+      <tbody>${rows}</tbody></table>
+    <div class="rc-sum">
+      <div class="rc-words">${num(bill.net) ? '(' + esc(bahtText(bill.net)) + ')' : ''}</div>
+      <div class="rc-totals"><span>รวม</span><b>${money(bill.total)}</b>${num(bill.discount) ? `<span>ส่วนลด</span><b>${money(bill.discount)}</b>` : ''}</div>
+      <div class="rc-net"><span>${isRet ? 'ยอดคืน' : 'เป็นเงิน'}</span><b>${money(bill.net)}</b></div>
+    </div>
+    <div class="rc-sign">
+      <div><div class="rc-line"></div>ผู้รับสินค้า${bill.customer_name ? ' (' + esc(bill.customer_name) + ')' : ''}</div>
+      <div><div class="rc-line"></div>ผู้จัดอะไหล่${bill.created_by ? ' (' + esc(bill.created_by) + ')' : ''}</div>
+      <div><div class="rc-line"></div>ผู้ตรวจสอบ</div>
+    </div>
+    ${copy === 'สำหรับลูกค้า' ? `<div class="rc-note">${esc(S.settings.receipt_note || '')}<br><b>${esc(S.settings.receipt_footer || '')}</b></div>` : ''}
+    ${bill.status === 'ยกเลิก' ? '<div class="po-stamp">ยกเลิก</div>' : ''}
   </div>`;
 }
 

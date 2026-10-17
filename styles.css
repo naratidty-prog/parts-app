@@ -86,18 +86,50 @@ tr.ret td { color: var(--bad); }
 .print-only { display: none; }
 
 /* ---------- ใบเสร็จ ---------- */
-.receipt { width: 190mm; height: 138mm; padding: 4mm 6mm; font-size: 12.5px; color: #000; position: relative; overflow: hidden; }
-.receipt + .receipt { border-top: 1px dashed #999; }
+.receipt { width: 190mm; height: 138mm; box-sizing: border-box; padding: 3.5mm 7mm 2.5mm; font-size: 12.5px; color: #1d2733; position: relative; overflow: hidden; background: #fff; }
+.receipt + .receipt { border-top: 1px dashed #9aa7b5; }
 .receipt.long { height: auto; min-height: 138mm; overflow: visible; page-break-after: always; }
-.receipt .r-head { display: grid; grid-template-columns: 1fr auto; gap: 2px 16px; }
-.receipt .r-title { font-size: 16px; font-weight: 700; text-align: center; margin-bottom: 2px; }
-.receipt .r-copy { position: absolute; right: 6mm; top: 4mm; font-size: 11px; border: 1px solid #000; padding: 0 6px; }
-.receipt table { width: 100%; border-collapse: collapse; margin-top: 4px; }
-.receipt th, .receipt td { border: 1px solid #000; padding: 1px 4px; font-size: 12px; }
-.receipt td { height: 4.7mm; padding-top: 0; padding-bottom: 0; }
-.receipt .r-foot { display: grid; grid-template-columns: 1fr auto auto; gap: 1px 10px; margin-top: 3px; align-items: center; }
-.receipt .r-sign { margin-top: 6px; font-size: 12px; }
-.receipt .r-note { font-size: 11px; margin-top: 3px; }
+/* ใบเบิกแบบใหม่: หัวมีโลโก้ แถบสีเทา ตารางไม่มีเส้นบรรทัด (สลับสีพื้นอ่อน) */
+.rc { display: flex; flex-direction: column; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+.rc-top { display: flex; align-items: center; gap: 3mm; }
+.rc-logo { width: 12mm; height: 12mm; object-fit: contain; }
+.rc-co { flex: 1; min-width: 0; }
+.rc-co-name { font-size: 16px; font-weight: 700; line-height: 1.2; }
+.rc-co-sub { font-size: 10px; color: #6b7785; }
+.rc-head { text-align: right; }
+.rc-title { font-size: 20px; font-weight: 700; color: #3d4248; line-height: 1.1; letter-spacing: .5px; }
+.rc-tag { display: inline-block; margin-top: .8mm; border: 1px solid #6b7075; color: #3d4248; border-radius: 3mm; padding: 0 2.5mm; font-size: 10.5px; font-weight: 600; white-space: nowrap; }
+.rc-bar { display: flex; justify-content: space-between; align-items: center; gap: 4mm; margin-top: 1.8mm; padding: 1.2mm 3.5mm; background: #3d4248; color: #fff; border-radius: 2mm; }
+.rc-bar span { opacity: .8; margin-right: 2mm; font-size: 11.5px; }
+.rc-cus b { font-size: 15px; }
+.rc-meta { display: flex; gap: 6mm; font-size: 13px; white-space: nowrap; }
+.rc-info { display: flex; justify-content: space-between; align-items: center; gap: 4mm; min-height: 5mm; padding: .6mm 1mm 0; font-size: 11px; }
+.rc-sub { flex: 1; min-width: 0; color: #4a5866; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rc-right { text-align: right; white-space: nowrap; }
+.rc-right span { color: #6b7785; margin-right: 1.5mm; }
+.rc-chip { display: inline-block; background: #e9ebed; color: #3d4248 !important; border-radius: 2mm; padding: 0 2.5mm; font-weight: 600; }
+.rc-chip.warn { background: #fdecea; color: #c62828 !important; }
+.rc-paydate { margin-left: 4mm; }
+.rc-paydate i { display: inline-block; width: 26mm; border-bottom: 1px dotted #6b7785; }
+.rc-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.rc-table th { text-align: left; font-weight: 600; font-size: 10.5px; color: #3d4248; padding: .7mm 1.5mm; border-bottom: 1.5px solid #3d4248; }
+.rc-table td { padding: .55mm 1.5mm; font-size: 11.5px; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rc-table tbody tr:nth-child(even) td { background: #f3f4f5; }
+.rc-table .num { text-align: right; }
+.rc-table .c { text-align: center; color: #6b7785; }
+.rc-table td.mdl { font-size: 10.5px; color: #4a5866; }
+.rc-sum { display: flex; align-items: center; gap: 4mm; margin-top: auto; padding-top: 1.2mm; border-top: 1.5px solid #3d4248; }
+.rc-words { flex: 1; font-size: 11px; color: #4a5866; }
+.rc-totals { font-size: 11.5px; white-space: nowrap; }
+.rc-totals span { color: #6b7785; margin: 0 1.5mm 0 4mm; }
+.rc-net { background: #e9ebed; border-radius: 2mm; padding: .6mm 3.5mm; white-space: nowrap; }
+.rc-net span { color: #3d4248; font-weight: 600; margin-right: 3mm; font-size: 12px; }
+.rc-net b { font-size: 16px; color: #3d4248; }
+.rc-sign { display: flex; gap: 6mm; margin-top: 1.5mm; text-align: center; font-size: 10.5px; color: #4a5866; }
+.rc-sign > div { flex: 1; }
+.rc-line { border-bottom: 1px dotted #6b7785; height: 5mm; margin-bottom: .6mm; }
+.rc-note { font-size: 10px; line-height: 1.3; color: #4a5866; margin-top: 1mm; text-align: center; }
+.rc-void .rc-bar { background: #9aa0a6; }
 .preview .receipt { margin: 0 auto 10px; border: 1px solid #ccc; }
 
 @media print {
@@ -130,7 +162,6 @@ tr.ret td { color: var(--bad); }
 .order-opts > span:first-child { font-weight: 600; }
 .order-opts label { display: inline-flex; gap: 4px; align-items: center; white-space: nowrap; }
 .order-opts .paid input { width: 110px; text-align: right; }
-.receipt td.r-memo { font-size: 10.5px; white-space: nowrap; overflow: hidden; }
 
 /* ---------------------------------------------------------------- ใบประเมินราคา (หน้าจอ) */
 .est-top { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 10px; }
