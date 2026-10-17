@@ -88,7 +88,6 @@ tr.ret td { color: var(--bad); }
 /* ---------- ใบเสร็จ ---------- */
 .receipt { width: 200mm; height: 147mm; box-sizing: border-box; padding: 4mm 6mm 3mm; font-size: 12.5px; color: #1d2733; position: relative; overflow: hidden; background: #fff; }
 .receipt + .receipt { border-top: 1px dashed #9aa7b5; }
-.receipt.long { height: auto; min-height: 147mm; overflow: visible; page-break-after: always; }
 /* ใบเบิกแบบใหม่: หัวมีโลโก้ แถบสีเทา ตารางไม่มีเส้นบรรทัด (สลับสีพื้นอ่อน) */
 .rc { display: flex; flex-direction: column; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 .rc-top { display: flex; align-items: center; gap: 3mm; }
@@ -144,7 +143,9 @@ tr.ret td { color: var(--bad); }
   .receipt + .receipt { border-top: 1px dashed #999 !important; }
   /* ใบเบิก/ใบสั่งซื้อ: ขอบกระดาษ 0 เพื่อให้ Chrome ไม่พิมพ์วันที่ ชื่อเว็บ เลขหน้า แล้วเว้นขอบเองแทน */
   .receipt { margin-left: 5mm; }
-  .receipt:first-child, .receipt.long + .receipt { margin-top: 1.5mm; }
+  .receipt:first-child, .receipt.rc-break + .receipt { margin-top: 1.5mm; }
+  .receipt.rc-break { break-after: page; }
+  .receipt.rc-break + .receipt { border-top: 0 !important; }
   .po-sheet { margin: 7mm; }
 }
 @media (max-width: 700px) {
