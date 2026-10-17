@@ -133,7 +133,10 @@ tr.ret td { color: var(--bad); }
 .preview .receipt { margin: 0 auto 10px; border: 1px solid #ccc; }
 
 @media print {
-  @page { size: A4 portrait; margin: 8mm 10mm; }
+  /* ขอบกระดาษ 0 ทุกเอกสาร: Chrome จะไม่มีที่พิมพ์วันที่ ชื่อเว็บ เลขหน้า แล้วเอกสารเว้นขอบเอง (ทุกหน้า) */
+  @page { size: A4 portrait; margin: 0; }
+  #print-area { padding: 8mm 10mm; -webkit-box-decoration-break: clone; box-decoration-break: clone; }
+  #print-area.pa-tight { padding: 0; }
   body { background: #fff; }
   .no-print, .screen, .modal { display: none !important; }
   .print-only { display: block !important; }
