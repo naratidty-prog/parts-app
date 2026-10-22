@@ -7,8 +7,8 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon-192.png">
 <meta name="theme-color" content="#1f4e79">
-<meta name="app-build" content="33">
-<link rel="stylesheet" href="styles.css?v=33">
+<meta name="app-build" content="34">
+<link rel="stylesheet" href="styles.css?v=34">
 </head>
 <body>
 
@@ -39,7 +39,7 @@
 <!-- แอปหลัก -->
 <section id="scr-app" class="screen hidden">
   <header class="topbar no-print">
-    <div class="brand">อะไหล่ <span id="shop-name" class="muted"></span> <small class="muted" style="font-size:11px">v33</small></div>
+    <div class="brand">อะไหล่ <span id="shop-name" class="muted"></span> <small class="muted" style="font-size:11px">v34</small></div>
     <label class="branch-pick">สาขา <select id="branch-select"></select></label>
     <button id="sync-chip" class="chip" title="กดเพื่อส่งข้อมูลตอนนี้"></button>
     <span id="user-label" class="muted"></span>
@@ -183,6 +183,25 @@
         <tbody></tbody>
       </table>
     </div>
+    <!-- สะสมแต้ม: ไฟล์อัปโหลดเข้าแอปสะสมแต้ม (แอดมิน) -->
+    <div class="card admin-only" id="pts-card">
+      <h3>ไฟล์สะสมแต้มลูกค้า</h3>
+      <p class="small muted">คิดยอดรวมบิลของลูกค้าแต่ละวัน วันไหนไม่ถึง 100 บาทไม่นับ ไม่รวมค่าแรง/ค่าบริการ (ชื่อขึ้นต้นด้วย "ค่า") และอะไหล่ที่ตั้งไว้ว่าไม่นับแต้ม หักบิลคืนแล้ว เฉพาะลูกค้าที่ติ๊กสมาชิกสะสมแต้มและมีเบอร์มือถือ</p>
+      <div class="row">
+        <label>สาขา<select id="pts-branch"></select></label>
+        <label>สัปดาห์ที่มีวันที่<input type="date" id="pts-date"></label>
+        <button id="btn-pts-prev" type="button">‹ สัปดาห์ก่อน</button>
+        <button id="btn-pts-next" type="button">สัปดาห์ถัดไป ›</button>
+        <button id="btn-pts-load" class="primary" type="button">ดูรายการ</button>
+        <button id="btn-pts-excel" type="button">ดาวน์โหลดไฟล์อัปโหลด</button>
+      </div>
+      <p class="muted" id="pts-msg"></p>
+      <div class="scroll-x"><table class="grid small" id="pts-table">
+        <thead><tr><th>วันที่ (Billing ID)</th><th>ลูกค้า</th><th>เบอร์มือถือ (Phone Number)</th><th class="num">ยอดนับแต้ม (Money Amount)</th><th>บิล</th></tr></thead>
+        <tbody></tbody>
+      </table></div>
+      <div id="pts-notes" class="small"></div>
+    </div>
   </main>
 
   <!-- ใบคุมบิลรายวัน -->
@@ -259,7 +278,7 @@
     </div>
     <div class="card scroll-x">
       <table class="grid small" id="cus-table">
-        <thead><tr><th>รหัส</th><th>ชื่อที่ใช้</th><th>ชื่อ-นามสกุล</th><th>เบอร์โทร</th><th>ที่อยู่</th><th></th></tr></thead>
+        <thead><tr><th>รหัส</th><th>ชื่อที่ใช้</th><th>ชื่อ-นามสกุล</th><th>เบอร์โทร</th><th>สะสมแต้ม</th><th>ที่อยู่</th><th></th></tr></thead>
         <tbody></tbody>
       </table>
     </div>
@@ -289,6 +308,7 @@
         <label>ราคาขายไม่รวมภาษี<input name="price_ex" type="number" step="0.01"></label>
         <label>ราคาขายรวมภาษี<input name="price" type="number" step="0.01" required></label>
         <label>ลดได้สูงสุด (%)<input name="max_disc" type="number" step="0.01" min="0" max="100" placeholder="เว้นว่าง = ตามสาขา"></label>
+        <label class="check"><input name="no_point" type="checkbox"> ไม่นับแต้มสะสม</label>
         <div class="actions"><button class="primary" type="submit">บันทึกอะไหล่</button></div>
       </form>
       <div class="card" id="pending-parts-card">
@@ -355,6 +375,6 @@
     <div class="busy-slow" hidden>อินเทอร์เน็ตช้า ระบบยังทำงานอยู่</div>
   </div>
 </div>
-<script src="app.js?v=33"></script>
+<script src="app.js?v=34"></script>
 </body>
 </html>
