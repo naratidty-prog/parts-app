@@ -116,7 +116,7 @@ tr.ret td { color: var(--bad); }
 .rc-table tbody tr:nth-child(even) td { background: #f3f4f5; }
 .rc-table .num { text-align: right; }
 .rc-table .c { text-align: center; color: #6b7785; padding-left: 0; padding-right: 0; text-overflow: clip; }
-.rc-table td.mdl { font-size: 13px; color: #4a5866; }
+.rc-table td.mdl { font-size: 13.5px; color: #4a5866; }
 .rc-sum { display: flex; align-items: center; gap: 4mm; margin-top: auto; padding-top: 1.2mm; border-top: 1.5px solid #3d4248; }
 .rc-words { flex: 1; font-size: 13px; color: #4a5866; }
 .rc-totals { font-size: 14.5px; white-space: nowrap; }
