@@ -7,8 +7,8 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon-192.png">
 <meta name="theme-color" content="#1f4e79">
-<meta name="app-build" content="34">
-<link rel="stylesheet" href="styles.css?v=34">
+<meta name="app-build" content="36">
+<link rel="stylesheet" href="styles.css?v=36">
 </head>
 <body>
 
@@ -39,7 +39,7 @@
 <!-- แอปหลัก -->
 <section id="scr-app" class="screen hidden">
   <header class="topbar no-print">
-    <div class="brand">อะไหล่ <span id="shop-name" class="muted"></span> <small class="muted" style="font-size:11px">v34</small></div>
+    <div class="brand">อะไหล่ <span id="shop-name" class="muted"></span> <small class="muted" style="font-size:11px">v36</small></div>
     <label class="branch-pick">สาขา <select id="branch-select"></select></label>
     <button id="sync-chip" class="chip" title="กดเพื่อส่งข้อมูลตอนนี้"></button>
     <span id="user-label" class="muted"></span>
@@ -53,6 +53,7 @@
     <button data-tab="control">พิมพ์ใบคุม</button>
     <button data-tab="po">ใบสั่งซื้อ</button>
     <button data-tab="customers">ลูกค้า</button>
+    <button data-tab="points" class="admin-only">สะสมแต้ม</button>
     <button data-tab="admin" class="admin-only">แอดมิน</button>
   </nav>
   <div id="parts-progress" class="banner hidden no-print"></div>
@@ -184,24 +185,6 @@
       </table>
     </div>
     <!-- สะสมแต้ม: ไฟล์อัปโหลดเข้าแอปสะสมแต้ม (แอดมิน) -->
-    <div class="card admin-only" id="pts-card">
-      <h3>ไฟล์สะสมแต้มลูกค้า</h3>
-      <p class="small muted">คิดยอดรวมบิลของลูกค้าแต่ละวัน วันไหนไม่ถึง 100 บาทไม่นับ ไม่รวมค่าแรง/ค่าบริการ (ชื่อขึ้นต้นด้วย "ค่า") และอะไหล่ที่ตั้งไว้ว่าไม่นับแต้ม หักบิลคืนแล้ว เฉพาะลูกค้าที่ติ๊กสมาชิกสะสมแต้มและมีเบอร์มือถือ</p>
-      <div class="row">
-        <label>สาขา<select id="pts-branch"></select></label>
-        <label>สัปดาห์ที่มีวันที่<input type="date" id="pts-date"></label>
-        <button id="btn-pts-prev" type="button">‹ สัปดาห์ก่อน</button>
-        <button id="btn-pts-next" type="button">สัปดาห์ถัดไป ›</button>
-        <button id="btn-pts-load" class="primary" type="button">ดูรายการ</button>
-        <button id="btn-pts-excel" type="button">ดาวน์โหลดไฟล์อัปโหลด</button>
-      </div>
-      <p class="muted" id="pts-msg"></p>
-      <div class="scroll-x"><table class="grid small" id="pts-table">
-        <thead><tr><th>วันที่ (Billing ID)</th><th>ลูกค้า</th><th>เบอร์มือถือ (Phone Number)</th><th class="num">ยอดนับแต้ม (Money Amount)</th><th>บิล</th></tr></thead>
-        <tbody></tbody>
-      </table></div>
-      <div id="pts-notes" class="small"></div>
-    </div>
   </main>
 
   <!-- ใบคุมบิลรายวัน -->
@@ -270,6 +253,41 @@
     <div id="po-preview" class="preview hidden"></div>
   </main>
 
+  <!-- สะสมแต้มลูกค้า (แอดมิน) -->
+  <main id="tab-points" class="tab hidden no-print">
+    <div class="card">
+      <h3>นับแต้มลูกค้า</h3>
+      <p class="small muted">คิดยอดรวมบิลของลูกค้าแต่ละวัน วันไหนไม่ถึง 100 บาทไม่นับ ไม่รวมค่าแรง/ค่าบริการ (ชื่อขึ้นต้นด้วย "ค่า") และอะไหล่ที่ตั้งไว้ว่าไม่นับแต้ม หักบิลคืนแล้ว เฉพาะลูกค้าที่ติ๊กสมาชิกสะสมแต้มและมีเบอร์มือถือ</p>
+      <div class="row">
+        <label>สาขา<select id="pts-branch"></select></label>
+        <label>ตั้งแต่วันที่<input type="date" id="pts-from"></label>
+        <label>ถึงวันที่<input type="date" id="pts-to"></label>
+        <label>ลูกค้า<select id="pts-cus"><option value="">ลูกค้าสมาชิกทั้งหมด</option></select></label>
+        <button id="btn-pts-load" class="primary" type="button">ดูรายการ</button>
+      </div>
+      <div class="row">
+        <button id="btn-pts-excel" type="button">⬇ ไฟล์สำหรับใส่แอพ</button>
+        <button id="btn-pts-export" type="button">⬇ ข้อมูลexport</button>
+      </div>
+      <p class="muted" id="pts-msg"></p>
+    </div>
+    <div class="card">
+      <h3>รวมแต้มตามลูกค้า</h3>
+      <div class="scroll-x"><table class="grid small" id="pts-sum">
+        <thead><tr><th>ลูกค้า</th><th>เบอร์มือถือ</th><th class="num">จำนวนวันที่นับ</th><th class="num">ยอดนับแต้มรวม</th></tr></thead>
+        <tbody></tbody>
+      </table></div>
+    </div>
+    <div class="card">
+      <h3>รายวัน (ตรงกับไฟล์สำหรับใส่แอพ)</h3>
+      <div class="scroll-x"><table class="grid small" id="pts-table">
+        <thead><tr><th>วันที่ (Billing ID)</th><th>ลูกค้า</th><th>เบอร์มือถือ (Phone Number)</th><th class="num">ยอดนับแต้ม (Money Amount)</th><th>บิล</th></tr></thead>
+        <tbody></tbody>
+      </table></div>
+      <div id="pts-notes" class="small"></div>
+    </div>
+  </main>
+
   <!-- ลูกค้า -->
   <main id="tab-customers" class="tab hidden no-print">
     <div class="card row">
@@ -289,6 +307,7 @@
     <nav class="subtabs">
       <button data-sub="audit" class="active">ประวัติแก้ไข/ลบ/คืน</button>
       <button data-sub="parts">ข้อมูลอะไหล่</button>
+      <button data-sub="nopoint">อะไหล่ไม่นับแต้ม</button>
       <button data-sub="users">ผู้ใช้</button>
       <button data-sub="discounts">สาขาและส่วนลด</button>
     </nav>
@@ -312,15 +331,38 @@
         <div class="actions"><button class="primary" type="submit">บันทึกอะไหล่</button></div>
       </form>
       <div class="card" id="pending-parts-card">
-        <div class="row-between"><h3>อะไหล่ที่พนักงานเพิ่มด่วน (รอตรวจ) <span id="pending-parts-count" class="muted small"></span></h3><button type="button" class="primary" id="btn-approve-all">ยืนยันทั้งหมด</button></div>
-        <p class="small muted">ตรวจชื่อและราคา แล้วกด ยืนยัน ถ้าต้องแก้ให้กด แก้ไข ข้อมูลจะขึ้นในฟอร์มด้านบน ระหว่างรอตรวจ อะไหล่ตัวนี้ลดราคาไม่ได้</p>
-        <table class="grid small"><thead><tr><th>รหัส</th><th>ชื่ออะไหล่</th><th>รุ่น</th><th class="num">ราคา</th><th>ผู้เพิ่ม</th><th></th></tr></thead><tbody id="pending-parts-body"></tbody></table>
+        <h3>อะไหล่ที่พนักงานเพิ่มด่วน (รอตรวจ) <span id="pending-parts-count" class="muted small"></span></h3>
+        <p class="small muted">ติ๊กเลือกรายการ แล้วกดปุ่มด้านล่าง ถ้าต้องแก้ชื่อหรือราคาให้กด แก้ไข ทีละตัว ข้อมูลจะขึ้นในฟอร์มด้านบน ระหว่างรอตรวจ อะไหล่ตัวนี้ลดราคาไม่ได้</p>
+        <div class="row">
+          <button type="button" class="primary" id="btn-pp-approve">ยืนยันที่เลือก</button>
+          <button type="button" id="btn-pp-nopoint">ไม่นับแต้ม</button>
+          <button type="button" id="btn-pp-point">นับแต้ม</button>
+          <button type="button" class="danger" id="btn-pp-delete">ลบที่เลือก</button>
+          <span class="muted small" id="pp-selected"></span>
+        </div>
+        <div class="scroll-x"><table class="grid small"><thead><tr><th><input type="checkbox" id="pp-all" title="เลือกทั้งหมด"></th><th>รหัส</th><th>ชื่ออะไหล่</th><th>รุ่น</th><th class="num">ราคา</th><th>ผู้เพิ่ม</th><th>แต้ม</th><th></th></tr></thead><tbody id="pending-parts-body"></tbody></table></div>
       </div>
       <div class="card">
         <h3>นำเข้าจาก Excel</h3>
         <p class="small muted">หัวคอลัมน์: รหัสอะไหล่, ชื่ออะไหล่, รุ่น, ทุนไม่รวมภาษี, ราคาขายไม่รวมภาษี, ราคาขายรวมภาษี (รหัสที่มีอยู่แล้วจะถูกอัปเดตราคา)</p>
         <input type="file" id="parts-file" accept=".xlsx,.xls,.xlsm,.csv">
         <p id="parts-import-msg"></p>
+      </div>
+    </div>
+    <div id="sub-nopoint" class="sub hidden">
+      <div class="card">
+        <h3>อะไหล่ไม่นับแต้ม <span id="np-count" class="muted small"></span></h3>
+        <p class="small muted">อะไหล่ในรายการนี้ขายได้ตามปกติ แต่ยอดไม่ถูกนับแต้มสะสม เอาติ๊กออก = กลับมานับแต้ม</p>
+        <div class="row">
+          <label class="grow">เพิ่มรหัสอะไหล่ (ใส่หลายรหัสได้ คั่นด้วยช่องว่างหรือจุลภาค)<input id="np-add-code" autocapitalize="characters"></label>
+          <button type="button" id="btn-np-search">🔍 ค้นหาอะไหล่</button>
+          <button type="button" class="primary" id="btn-np-add">เพิ่มเป็นไม่นับแต้ม</button>
+        </div>
+        <div class="row"><label class="grow">ค้นในรายการ<input id="np-filter" placeholder="พิมพ์รหัส ชื่อ หรือรุ่น"></label></div>
+        <div class="scroll-x"><table class="grid small" id="np-table">
+          <thead><tr><th>ไม่นับแต้ม</th><th>รหัส</th><th>ชื่ออะไหล่</th><th>รุ่น</th><th class="num">ราคา</th></tr></thead>
+          <tbody></tbody>
+        </table></div>
       </div>
     </div>
     <div id="sub-users" class="sub hidden">
@@ -375,6 +417,6 @@
     <div class="busy-slow" hidden>อินเทอร์เน็ตช้า ระบบยังทำงานอยู่</div>
   </div>
 </div>
-<script src="app.js?v=34"></script>
+<script src="app.js?v=36"></script>
 </body>
 </html>
