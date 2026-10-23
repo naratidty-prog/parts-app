@@ -7,8 +7,8 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon-192.png">
 <meta name="theme-color" content="#1f4e79">
-<meta name="app-build" content="40">
-<link rel="stylesheet" href="styles.css?v=40">
+<meta name="app-build" content="41">
+<link rel="stylesheet" href="styles.css?v=41">
 </head>
 <body>
 
@@ -39,7 +39,7 @@
 <!-- แอปหลัก -->
 <section id="scr-app" class="screen hidden">
   <header class="topbar no-print">
-    <div class="brand">อะไหล่ <span id="shop-name" class="muted"></span> <small class="muted" style="font-size:11px">v40</small></div>
+    <div class="brand">อะไหล่ <span id="shop-name" class="muted"></span> <small class="muted" style="font-size:11px">v41</small></div>
     <label class="branch-pick">สาขา <select id="branch-select"></select></label>
     <button id="sync-chip" class="chip" title="กดเพื่อส่งข้อมูลตอนนี้"></button>
     <span id="user-label" class="muted"></span>
@@ -304,6 +304,12 @@
       <p class="warn" id="ex-lock-msg"></p>
     </form>
     <div id="ex-body" class="hidden">
+      <nav class="subtabs">
+        <button data-sub="exdash" class="active">ภาพรวม</button>
+        <button data-sub="users" class="admin-only">ผู้ใช้</button>
+        <button data-sub="discounts" class="admin-only">สาขาและส่วนลด</button>
+      </nav>
+      <div id="sub-exdash" class="sub">
       <div class="card row">
         <label>เดือน<input type="month" id="ex-month"></label>
         <label>สาขา<select id="ex-branch"></select></label>
@@ -326,6 +332,37 @@
       <div class="ex-grid">
         <div class="card"><h3>11. ใบสั่งซื้อที่ยังไม่ได้จ่ายร้านอื่น</h3><div class="scroll-x" id="ex-pos"></div></div>
         <div class="card"><h3>12. ช่วงเวลาและวันที่ขายดี</h3><div id="ex-time"></div></div>
+      </div>
+          </div>
+      <div id="sub-users" class="sub hidden">
+        <form class="card form-grid" id="user-form" autocomplete="off">
+          <h3>เพิ่ม / แก้ไขผู้ใช้</h3>
+          <label>ชื่อผู้ใช้<input name="username" required autocapitalize="off"></label>
+          <label>ชื่อที่แสดง<input name="name" required></label>
+          <label>สิทธิ์<select name="role"><option value="staff">พนักงาน</option><option value="admin">แอดมิน</option></select></label>
+          <label>สาขา<select name="branch" id="user-branch"></select></label>
+          <label>รหัสเข้าระบบ<input name="pin" type="password" placeholder="เว้นว่างถ้าไม่เปลี่ยน"></label>
+          <label>รหัสอนุมัติ (แอดมิน)<input name="approve" type="password" placeholder="เว้นว่างถ้าไม่เปลี่ยน"></label>
+          <label class="check"><input name="active" type="checkbox" checked> ใช้งานอยู่</label>
+          <div class="actions"><button class="primary" type="submit">บันทึกผู้ใช้</button></div>
+        </form>
+        <div class="card"><table class="grid small" id="users-table">
+          <thead><tr><th>ชื่อผู้ใช้</th><th>ชื่อ</th><th>สิทธิ์</th><th>สาขา</th><th>สถานะ</th><th></th></tr></thead><tbody></tbody>
+        </table></div>
+      </div>
+      <div id="sub-discounts" class="sub hidden">
+        <form class="card" id="branch-disc-form">
+          <h3>ข้อมูลสาขาและส่วนลด</h3>
+          <p class="small muted">ส่วนลด: พนักงานพิมพ์ส่วนลดเองได้ไม่เกิน % ของสาขาตัวเอง ถ้าเกินต้องใส่รหัสอนุมัติของแอดมิน · เลขสาขา ที่อยู่ และเบอร์โทร ใช้พิมพ์หัวใบประเมินราคา</p>
+          <div class="scroll-x"><table class="grid small"><thead><tr><th>สาขา</th><th>เลขสาขา</th><th>ที่อยู่</th><th>เบอร์โทร</th><th class="num">ลดได้สูงสุด (%)</th></tr></thead><tbody id="branch-disc-body"></tbody></table></div>
+          <div class="actions"><button class="primary" type="submit">บันทึก</button></div>
+          <p id="branch-disc-msg"></p>
+        </form>
+        <div class="card">
+          <h3>อะไหล่ที่ลดไม่เหมือนปกติ</h3>
+          <p class="small muted">ตั้งได้ที่แท็บ ข้อมูลอะไหล่ ช่อง "ลดได้สูงสุด (%)" ใส่ 0 = ลดไม่ได้ เว้นว่าง = ลดตามสาขา</p>
+          <table class="grid small"><thead><tr><th>รหัส</th><th>ชื่ออะไหล่</th><th class="num">ราคา</th><th class="num">ลดได้สูงสุด</th><th></th></tr></thead><tbody id="special-parts-body"></tbody></table>
+        </div>
       </div>
     </div>
   </main>
@@ -350,8 +387,6 @@
       <button data-sub="audit" class="active">ประวัติแก้ไข/ลบ/คืน</button>
       <button data-sub="parts">ข้อมูลอะไหล่</button>
       <button data-sub="nopoint">อะไหล่ไม่นับแต้ม</button>
-      <button data-sub="users">ผู้ใช้</button>
-      <button data-sub="discounts">สาขาและส่วนลด</button>
     </nav>
     <div id="sub-audit" class="sub">
       <div class="card row"><button id="btn-audit-load" class="primary">โหลดประวัติล่าสุด</button></div>
@@ -407,36 +442,6 @@
         </table></div>
       </div>
     </div>
-    <div id="sub-users" class="sub hidden">
-      <form class="card form-grid" id="user-form" autocomplete="off">
-        <h3>เพิ่ม / แก้ไขผู้ใช้</h3>
-        <label>ชื่อผู้ใช้<input name="username" required autocapitalize="off"></label>
-        <label>ชื่อที่แสดง<input name="name" required></label>
-        <label>สิทธิ์<select name="role"><option value="staff">พนักงาน</option><option value="admin">แอดมิน</option></select></label>
-        <label>สาขา<select name="branch" id="user-branch"></select></label>
-        <label>รหัสเข้าระบบ<input name="pin" type="password" placeholder="เว้นว่างถ้าไม่เปลี่ยน"></label>
-        <label>รหัสอนุมัติ (แอดมิน)<input name="approve" type="password" placeholder="เว้นว่างถ้าไม่เปลี่ยน"></label>
-        <label class="check"><input name="active" type="checkbox" checked> ใช้งานอยู่</label>
-        <div class="actions"><button class="primary" type="submit">บันทึกผู้ใช้</button></div>
-      </form>
-      <div class="card"><table class="grid small" id="users-table">
-        <thead><tr><th>ชื่อผู้ใช้</th><th>ชื่อ</th><th>สิทธิ์</th><th>สาขา</th><th>สถานะ</th><th></th></tr></thead><tbody></tbody>
-      </table></div>
-    </div>
-    <div id="sub-discounts" class="sub hidden">
-      <form class="card" id="branch-disc-form">
-        <h3>ข้อมูลสาขาและส่วนลด</h3>
-        <p class="small muted">ส่วนลด: พนักงานพิมพ์ส่วนลดเองได้ไม่เกิน % ของสาขาตัวเอง ถ้าเกินต้องใส่รหัสอนุมัติของแอดมิน · เลขสาขา ที่อยู่ และเบอร์โทร ใช้พิมพ์หัวใบประเมินราคา</p>
-        <div class="scroll-x"><table class="grid small"><thead><tr><th>สาขา</th><th>เลขสาขา</th><th>ที่อยู่</th><th>เบอร์โทร</th><th class="num">ลดได้สูงสุด (%)</th></tr></thead><tbody id="branch-disc-body"></tbody></table></div>
-        <div class="actions"><button class="primary" type="submit">บันทึก</button></div>
-        <p id="branch-disc-msg"></p>
-      </form>
-      <div class="card">
-        <h3>อะไหล่ที่ลดไม่เหมือนปกติ</h3>
-        <p class="small muted">ตั้งได้ที่แท็บ ข้อมูลอะไหล่ ช่อง "ลดได้สูงสุด (%)" ใส่ 0 = ลดไม่ได้ เว้นว่าง = ลดตามสาขา</p>
-        <table class="grid small"><thead><tr><th>รหัส</th><th>ชื่ออะไหล่</th><th class="num">ราคา</th><th class="num">ลดได้สูงสุด</th><th></th></tr></thead><tbody id="special-parts-body"></tbody></table>
-      </div>
-    </div>
   </main>
 </section>
 
@@ -459,6 +464,6 @@
     <div class="busy-slow" hidden>อินเทอร์เน็ตช้า ระบบยังทำงานอยู่</div>
   </div>
 </div>
-<script src="app.js?v=40"></script>
+<script src="app.js?v=41"></script>
 </body>
 </html>
