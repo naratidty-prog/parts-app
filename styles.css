@@ -373,4 +373,9 @@ tr.sup-new td { background: #fff8e1; }
 .ex-chart .bar.we { fill: #6c9bc4; }
 .ex-chart .val { fill: var(--ink); font-size: 10px; }
 .ex-neg { color: var(--bad); font-weight: 700; }
+.ex-pick { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.ex-chip { border: 1px solid var(--line); background: var(--card); border-radius: 999px; padding: 5px 12px; font-size: 13px; cursor: pointer; }
+.ex-chip.on { background: var(--pri); border-color: var(--pri); color: #fff; }
+.ex-chip.sm { padding: 3px 10px; font-size: 12px; }
+.ex-cats { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
 @media (max-width: 560px) { .ex-grid { grid-template-columns: 1fr; } }
