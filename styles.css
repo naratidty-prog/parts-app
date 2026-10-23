@@ -353,3 +353,7 @@ tr.sup-new td { background: #fff8e1; }
 @keyframes busy-spin { to { transform: rotate(360deg); } }
 @keyframes busy-blink { 0%, 92%, 100% { transform: scaleY(1); } 95% { transform: scaleY(.1); } }
 @keyframes busy-dot { 0%, 60%, 100% { opacity: .25; transform: translateY(0); } 30% { opacity: 1; transform: translateY(-3px); } }
+/* บิลคืนในใบคุม: ตัวแดงหนา ยอดติดลบ */
+.cs-ret td, .cs-ret-table td, .cs-ret-title { color: #c62828 !important; font-weight: 700; }
+#rep-filter { margin: 0 0 8px; align-items: center; }
+#rep-filter button.active { background: var(--brand, #1f4e79); color: #fff; border-color: transparent; }
