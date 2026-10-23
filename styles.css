@@ -379,3 +379,47 @@ tr.sup-new td { background: #fff8e1; }
 .ex-chip.sm { padding: 3px 10px; font-size: 12px; }
 .ex-cats { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
 @media (max-width: 560px) { .ex-grid { grid-template-columns: 1fr; } }
+
+/* ---------- สำหรับผู้บริหาร: เมนูซ้าย + ธีมสี (เลือกได้ในหน้า จำไว้ในเครื่อง) ---------- */
+body { --exp: #7d5c7f; --exp-dark: #5f4661; --exp-soft: #f1e4ec; --exp-line: #dcc3d3; --ex-bg: #f7f1ea; --ex-side: #fffaf4; --ex-acc: #d9b3bc; --ex-ink: #4a3a48; }
+body.exth-navy  { --exp: #1f3a5f; --exp-dark: #142a47; --exp-soft: #e6ecf4; --exp-line: #c3cfdf; --ex-bg: #f5f3ee; --ex-side: #fdfcf8; --ex-acc: #c9a227; --ex-ink: #22324a; }
+body.exth-plum  { --exp: #7d5c7f; --exp-dark: #5f4661; --exp-soft: #f1e4ec; --exp-line: #dcc3d3; --ex-bg: #f7f1ea; --ex-side: #fffaf4; --ex-acc: #d9b3bc; --ex-ink: #4a3a48; }
+body.exth-jade  { --exp: #2e6b5a; --exp-dark: #1f4d40; --exp-soft: #e3f0eb; --exp-line: #bcd8cd; --ex-bg: #f6f3ea; --ex-side: #fdfbf5; --ex-acc: #d4a373; --ex-ink: #23413a; }
+body.exth-slate { --exp: #3d4450; --exp-dark: #2a2f38; --exp-soft: #eceef1; --exp-line: #cfd4db; --ex-bg: #f4f4f2; --ex-side: #fbfbfa; --ex-acc: #c8643b; --ex-ink: #2b2f36; }
+body.ex-mode { --pri: var(--exp); --bg: var(--ex-bg); background: var(--ex-bg); }
+body.ex-mode .topbar { background: linear-gradient(90deg, var(--exp-dark), var(--exp)); }
+body.ex-mode .tabs { background: var(--exp-dark); }
+body.ex-mode .tabs button { color: #ffffffcc; }
+body.ex-mode .tabs button.active { background: var(--ex-bg); color: var(--exp-dark); }
+body.ex-mode button.primary:hover { background: var(--exp-dark); }
+.ex-wrap { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: 16px; align-items: start; }
+.ex-side { background: var(--ex-side); border: 1px solid var(--exp-line); border-radius: 14px; padding: 10px; display: flex; flex-direction: column; gap: 3px; position: sticky; top: 8px; }
+.ex-side button { border: 0; background: transparent; border-radius: 10px; padding: 9px 12px; text-align: left; color: var(--ex-ink); white-space: normal; }
+.ex-side button:hover { background: var(--exp-soft); }
+.ex-side button.on { background: var(--exp); color: #fff; font-weight: 600; }
+.ex-side-title { font-size: 12px; color: var(--muted); padding: 10px 12px 2px; font-weight: 700; letter-spacing: .02em; }
+.ex-side .ex-lockbtn { margin-top: 10px; border: 1px dashed var(--exp-line); color: var(--exp-dark); text-align: center; }
+.ex-themes { display: flex; flex-direction: column; gap: 2px; }
+.ex-side .ex-theme { display: flex; align-items: center; gap: 6px; padding: 6px 10px; font-size: 13px; }
+.ex-side .ex-theme i { width: 14px; height: 14px; border-radius: 50%; display: inline-block; box-shadow: 0 0 0 1px #0002; }
+.ex-side .ex-theme i + i { margin-left: -9px; }
+.ex-side .ex-theme span { margin-left: 4px; }
+.ex-side .ex-theme.on { background: var(--exp-soft); color: var(--exp-dark); font-weight: 700; }
+.ex-main { min-width: 0; }
+.ex-main .card { border-color: var(--exp-line); border-radius: 12px; }
+.ex-main .card h3 { color: var(--exp-dark); }
+.ex-main table.grid th { background: var(--exp-soft); color: var(--exp-dark); }
+.ex-top { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 12px; }
+.ex-top label { display: flex; flex-direction: column; font-size: 13px; color: var(--muted); }
+.ex-main .ex-kpi { background: linear-gradient(135deg, var(--ex-side) 0%, var(--exp-soft) 100%); border-color: var(--exp-line); border-radius: 14px; }
+.ex-main .ex-kpi b { color: var(--exp-dark); }
+.ex-main .ex-chart .bar { fill: var(--exp); } .ex-main .ex-chart .bar:hover { fill: var(--exp-dark); }
+.ex-main .ex-chart .bar.we { fill: var(--ex-acc); }
+.ex-main .ex-chip.on { background: var(--exp); border-color: var(--exp); }
+.ex-grid.one { grid-template-columns: 1fr; }
+@media (max-width: 900px) {
+  .ex-wrap { grid-template-columns: 1fr; }
+  .ex-side { position: static; flex-direction: row; flex-wrap: wrap; }
+  .ex-side-title { width: 100%; }
+  .ex-themes { flex-direction: row; flex-wrap: wrap; }
+}

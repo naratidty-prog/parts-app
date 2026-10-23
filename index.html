@@ -7,8 +7,8 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon-192.png">
 <meta name="theme-color" content="#1f4e79">
-<meta name="app-build" content="46">
-<link rel="stylesheet" href="styles.css?v=46">
+<meta name="app-build" content="48">
+<link rel="stylesheet" href="styles.css?v=48">
 </head>
 <body>
 
@@ -39,7 +39,7 @@
 <!-- แอปหลัก -->
 <section id="scr-app" class="screen hidden">
   <header class="topbar no-print">
-    <div class="brand">อะไหล่ <span id="shop-name" class="muted"></span> <small class="muted" style="font-size:11px">v46</small></div>
+    <div class="brand">อะไหล่ <span id="shop-name" class="muted"></span> <small class="muted" style="font-size:11px">v48</small></div>
     <label class="branch-pick">สาขา <select id="branch-select"></select></label>
     <button id="sync-chip" class="chip" title="กดเพื่อส่งข้อมูลตอนนี้"></button>
     <span id="user-label" class="muted"></span>
@@ -303,21 +303,34 @@
       <div class="row"><input type="password" id="ex-code" autocomplete="off" placeholder="รหัสพิเศษ"><button class="primary" type="submit">เปิดดู</button></div>
       <p class="warn" id="ex-lock-msg"></p>
     </form>
-    <div id="ex-body" class="hidden">
-      <nav class="subtabs">
-        <button data-sub="exdash" class="active">ภาพรวม</button>
-        <button data-sub="users" class="admin-only">ผู้ใช้</button>
-        <button data-sub="discounts" class="admin-only">สาขาและส่วนลด</button>
-      </nav>
+    <div id="ex-body" class="ex-wrap hidden">
+      <aside class="ex-side">
+        <div class="ex-side-title">เมนูผู้บริหาร</div>
+        <button type="button" data-view="all">📋 ทุกหัวข้อ</button>
+        <button type="button" data-view="1">🏢 เทียบสาขา</button>
+        <button type="button" data-view="2">📈 ยอดขายรายวัน</button>
+        <button type="button" data-view="3">🏷️ อะไหล่ขายดีแยกหมวด</button>
+        <button type="button" data-view="4">👥 ลูกค้าซื้อมากสุด</button>
+        <button type="button" data-view="6">⏰ บิลค้างจ่าย</button>
+        <button type="button" data-view="7">✋ ยกเลิก / คืน / แก้ไข</button>
+        <button type="button" data-view="10">⚠️ อะไหล่ที่ขายขาดทุน</button>
+        <button type="button" data-view="11">📦 ใบสั่งซื้อค้างจ่าย</button>
+        <button type="button" data-view="12">🕘 ช่วงเวลาขายดี</button>
+        <div class="ex-side-title admin-only">ตั้งค่า</div>
+        <button type="button" data-view="users" class="admin-only">🔑 ผู้ใช้</button>
+        <button type="button" data-view="discounts" class="admin-only">🏪 สาขาและส่วนลด</button>
+        <div class="ex-side-title">ธีมสี</div>
+        <div class="ex-themes" id="ex-themes"></div>
+        <button type="button" id="btn-ex-lock" class="ex-lockbtn">🔒 ล็อกหน้านี้</button>
+      </aside>
+      <section class="ex-main">
       <div id="sub-exdash" class="sub">
-      <div class="card row">
+      <div class="ex-top">
         <label>เดือน<input type="month" id="ex-month"></label>
         <label>สาขา<select id="ex-branch"></select></label>
         <button class="primary" type="button" id="btn-ex-load">แสดง</button>
-        <button type="button" id="btn-ex-lock">ล็อกหน้านี้</button>
         <span class="muted small" id="ex-msg"></span>
       </div>
-      <div class="card ex-pick" id="ex-pick"></div>
       <div class="ex-kpis" id="ex-kpis"></div>
       <div class="card" data-ex="1"><h3>1. เทียบสาขา</h3><div class="scroll-x" id="ex-branches"></div></div>
       <div class="card" data-ex="2"><h3>2. ยอดขายรายวัน</h3><div class="scroll-x" id="ex-daily"></div></div>
@@ -334,7 +347,7 @@
         <div class="card" data-ex="11"><h3>11. ใบสั่งซื้อที่ยังไม่ได้จ่ายร้านอื่น</h3><div class="scroll-x" id="ex-pos"></div></div>
         <div class="card" data-ex="12"><h3>12. ช่วงเวลาและวันที่ขายดี</h3><div id="ex-time"></div></div>
       </div>
-          </div>
+      </div>
       <div id="sub-users" class="sub hidden">
         <form class="card form-grid" id="user-form" autocomplete="off">
           <h3>เพิ่ม / แก้ไขผู้ใช้</h3>
@@ -365,6 +378,7 @@
           <table class="grid small"><thead><tr><th>รหัส</th><th>ชื่ออะไหล่</th><th class="num">ราคา</th><th class="num">ลดได้สูงสุด</th><th></th></tr></thead><tbody id="special-parts-body"></tbody></table>
         </div>
       </div>
+      </section>
     </div>
   </main>
 
@@ -465,6 +479,6 @@
     <div class="busy-slow" hidden>อินเทอร์เน็ตช้า ระบบยังทำงานอยู่</div>
   </div>
 </div>
-<script src="app.js?v=46"></script>
+<script src="app.js?v=48"></script>
 </body>
 </html>
