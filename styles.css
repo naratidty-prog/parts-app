@@ -356,4 +356,21 @@ tr.sup-new td { background: #fff8e1; }
 /* บิลคืนในใบคุม: ตัวแดงหนา ยอดติดลบ */
 .cs-ret td, .cs-ret-table td, .cs-ret-title { color: #c62828 !important; font-weight: 700; }
 #rep-filter { margin: 0 0 8px; align-items: center; }
-#rep-filter button.active { background: var(--brand, #1f4e79); color: #fff; border-color: transparent; }
+#rep-filter button.active { background: var(--pri); color: #fff; border-color: transparent; }
+/* สำหรับผู้บริหาร */
+.ex-lock { max-width: 420px; }
+.ex-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; margin-bottom: 12px; }
+.ex-kpi { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
+.ex-kpi span { display: block; color: var(--muted); font-size: 13px; }
+.ex-kpi b { display: block; font-size: 22px; font-variant-numeric: tabular-nums; }
+.ex-kpi small { font-size: 12px; }
+.ex-up { color: var(--ok); } .ex-down { color: var(--bad); }
+.ex-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 12px; }
+.ex-grid > .card { min-width: 0; }
+.ex-chart { display: block; max-width: 100%; height: auto; }
+.ex-chart text { font-size: 11px; fill: var(--muted); }
+.ex-chart .bar { fill: var(--pri); } .ex-chart .bar:hover { fill: #2f6fa8; }
+.ex-chart .bar.we { fill: #6c9bc4; }
+.ex-chart .val { fill: var(--ink); font-size: 10px; }
+.ex-neg { color: var(--bad); font-weight: 700; }
+@media (max-width: 560px) { .ex-grid { grid-template-columns: 1fr; } }
