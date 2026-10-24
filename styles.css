@@ -423,3 +423,5 @@ body.ex-mode button.primary:hover { background: var(--exp-dark); }
   .ex-side-title { width: 100%; }
   .ex-themes { flex-direction: row; flex-wrap: wrap; }
 }
+.cr-card h3 { margin: 0; } .cr-sum { color: #b42318; }
+#tab-credit label.grow { flex: 1; min-width: 220px; } #cr-q { width: 100%; }
