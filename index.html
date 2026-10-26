@@ -7,8 +7,8 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon-192.png">
 <meta name="theme-color" content="#1f4e79">
-<meta name="app-build" content="51">
-<link rel="stylesheet" href="styles.css?v=51">
+<meta name="app-build" content="52">
+<link rel="stylesheet" href="styles.css?v=52">
 </head>
 <body>
 
@@ -39,7 +39,7 @@
 <!-- แอปหลัก -->
 <section id="scr-app" class="screen hidden">
   <header class="topbar no-print">
-    <div class="brand">อะไหล่ <span id="shop-name" class="muted"></span> <small class="muted" style="font-size:11px">v51</small></div>
+    <div class="brand">อะไหล่ <span id="shop-name" class="muted"></span> <small class="muted" style="font-size:11px">v52</small></div>
     <label class="branch-pick">สาขา <select id="branch-select"></select></label>
     <button id="sync-chip" class="chip" title="กดเพื่อส่งข้อมูลตอนนี้"></button>
     <span id="user-label" class="muted"></span>
@@ -151,7 +151,9 @@
       </table>
       <div class="totals">
         <label class="est-note">หมายเหตุ<input id="est-note" placeholder="เช่น นัดรับรถ / อาการที่ตรวจพบ"></label>
-        <div class="tot-grid"><span>รวมราคาค่าซ่อมโดยประมาณ</span><b id="est-total" class="big">0.00</b></div>
+        <div class="tot-grid"><span>รวม</span><b id="est-total">0.00</b>
+          <span>ส่วนลด</span><span class="disc-pair"><input id="est-discount" type="number" step="0.01" min="0" value="0" title="ส่วนลดเป็นบาท"><input id="est-discount-pct" type="number" step="0.01" min="0" max="100" value="0" title="ส่วนลดเป็น %"><b>%</b></span>
+          <span>รวมราคาค่าซ่อมโดยประมาณ</span><b id="est-net" class="big">0.00</b></div>
       </div>
       <div class="actions">
         <button id="est-void" class="ghost danger-text">ยกเลิกใบนี้</button>
@@ -492,6 +494,6 @@
     <div class="busy-slow" hidden>อินเทอร์เน็ตช้า ระบบยังทำงานอยู่</div>
   </div>
 </div>
-<script src="app.js?v=51"></script>
+<script src="app.js?v=52"></script>
 </body>
 </html>

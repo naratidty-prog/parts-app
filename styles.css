@@ -425,3 +425,6 @@ body.ex-mode button.primary:hover { background: var(--exp-dark); }
 }
 .cr-card h3 { margin: 0; } .cr-sum { color: #b42318; }
 #tab-credit label.grow { flex: 1; min-width: 220px; } #cr-q { width: 100%; }
+.est-doc .ed-total .ed-sub { grid-column: 1 / -1; display: flex; justify-content: space-between; }
+.est-doc .ed-total .ed-sub span { font-weight: 400; }
+.est-doc .ed-total .ed-sub b { font-size: 14px; color: inherit; }
