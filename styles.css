@@ -428,3 +428,8 @@ body.ex-mode button.primary:hover { background: var(--exp-dark); }
 .est-doc .ed-total .ed-sub { grid-column: 1 / -1; display: flex; justify-content: space-between; }
 .est-doc .ed-total .ed-sub span { font-weight: 400; }
 .est-doc .ed-total .ed-sub b { font-size: 14px; color: inherit; }
+#pf-q { width: 100%; }
+#part-form .pf-changed { background: #fff6cc; border-color: #d4a72c; }
+#part-form label.pf-changed { border-radius: 6px; }
+#part-form .pf-old { display: block; color: #9a6700; font-size: 12px; min-height: 0; }
+#pf-results .pf-diff { color: #b42318; font-weight: 700; }
