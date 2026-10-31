@@ -433,3 +433,5 @@ body.ex-mode button.primary:hover { background: var(--exp-dark); }
 #part-form label.pf-changed { border-radius: 6px; }
 #part-form .pf-old { display: block; color: #9a6700; font-size: 12px; min-height: 0; }
 #pf-results .pf-diff { color: #b42318; font-weight: 700; }
+.sync-banner { display: block; width: 100%; margin: 0 0 10px; padding: 12px 16px; border-radius: 10px; border: 2px solid #d4a72c; background: #fff6cc; color: #7a5300; font-size: 16px; font-weight: 700; text-align: left; cursor: pointer; }
+.sync-banner.bad { border-color: #b42318; background: #fde8e7; color: #b42318; }

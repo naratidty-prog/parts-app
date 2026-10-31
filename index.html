@@ -7,8 +7,8 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon-192.png">
 <meta name="theme-color" content="#1f4e79">
-<meta name="app-build" content="54">
-<link rel="stylesheet" href="styles.css?v=54">
+<meta name="app-build" content="55">
+<link rel="stylesheet" href="styles.css?v=55">
 </head>
 <body>
 
@@ -39,7 +39,7 @@
 <!-- แอปหลัก -->
 <section id="scr-app" class="screen hidden">
   <header class="topbar no-print">
-    <div class="brand">อะไหล่ <span id="shop-name" class="muted"></span> <small class="muted" style="font-size:11px">v54</small></div>
+    <div class="brand">อะไหล่ <span id="shop-name" class="muted"></span> <small class="muted" style="font-size:11px">v55</small></div>
     <label class="branch-pick">สาขา <select id="branch-select"></select></label>
     <button id="sync-chip" class="chip" title="กดเพื่อส่งข้อมูลตอนนี้"></button>
     <span id="user-label" class="muted"></span>
@@ -62,6 +62,7 @@
 
   <!-- ขาย -->
   <main id="tab-sale" class="tab no-print">
+    <button type="button" id="sync-banner" class="sync-banner hidden"></button>
     <div class="sale-head card">
       <div class="field"><span>เลขที่ <a href="#" id="sale-dev" class="dev-link" title="เปลี่ยนเลขเครื่อง"></a></span><b id="sale-no">-</b></div>
       <label class="field">วันที่<input type="date" id="sale-date"></label>
@@ -500,6 +501,6 @@
     <div class="busy-slow" hidden>อินเทอร์เน็ตช้า ระบบยังทำงานอยู่</div>
   </div>
 </div>
-<script src="app.js?v=54"></script>
+<script src="app.js?v=55"></script>
 </body>
 </html>
