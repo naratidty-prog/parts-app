@@ -435,3 +435,11 @@ body.ex-mode button.primary:hover { background: var(--exp-dark); }
 #pf-results .pf-diff { color: #b42318; font-weight: 700; }
 .sync-banner { display: block; width: 100%; margin: 0 0 10px; padding: 12px 16px; border-radius: 10px; border: 2px solid #d4a72c; background: #fff6cc; color: #7a5300; font-size: 16px; font-weight: 700; text-align: left; cursor: pointer; }
 .sync-banner.bad { border-color: #b42318; background: #fde8e7; color: #b42318; }
+
+/* นำเข้าราคา PDF ฮอนด้า */
+.hp-sum { display: grid; gap: 4px; padding: 10px 12px; margin: 8px 0; border-radius: 8px; background: var(--hl); }
+.hp-up { color: #b42318; }
+.hp-down { color: #067647; }
+.hp-lang { font-weight: normal; margin-left: 12px; }
+.hp-lang label { display: inline-flex; gap: 4px; align-items: center; margin-left: 8px; }
+#hp-card h4 { margin: 14px 0 6px; }
