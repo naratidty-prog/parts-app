@@ -1,0 +1,523 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>บันทึกขายอะไหล่</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<meta name="theme-color" content="#1f4e79">
+<meta name="app-build" content="60">
+<link rel="stylesheet" href="styles.css?v=60">
+</head>
+<body>
+
+<!-- ตั้งค่าที่อยู่ระบบหลังบ้าน (ครั้งแรกครั้งเดียว) -->
+<section id="scr-setup" class="screen center hidden">
+  <div class="card narrow">
+    <h1>ตั้งค่าครั้งแรก</h1>
+    <p>วางลิงก์ Web app ที่ได้จาก Apps Script (ลงท้ายด้วย <code>/exec</code>)</p>
+    <input id="setup-url" placeholder="https://script.google.com/macros/s/.../exec">
+    <button class="primary" id="setup-save">บันทึก</button>
+    <p class="err" id="setup-err"></p>
+  </div>
+</section>
+
+<!-- เข้าสู่ระบบ -->
+<section id="scr-login" class="screen center hidden">
+  <form class="card narrow" id="login-form" autocomplete="off">
+    <h1>บันทึกขายอะไหล่</h1>
+    <label>ชื่อผู้ใช้<input id="login-user" autocapitalize="off" required></label>
+    <label>รหัส<input id="login-pin" type="password" inputmode="numeric" required></label>
+    <button class="primary" type="submit">เข้าสู่ระบบ</button>
+    <p class="err" id="login-err"></p>
+    <p class="muted small" id="login-net"></p>
+    <p class="small"><a href="#" id="login-reset-url">เปลี่ยนลิงก์ระบบหลังบ้าน</a></p>
+  </form>
+</section>
+
+<!-- แอปหลัก -->
+<section id="scr-app" class="screen hidden">
+  <header class="topbar no-print">
+    <div class="brand">อะไหล่ <span id="shop-name" class="muted"></span> <small class="muted" style="font-size:11px">v60</small></div>
+    <label class="branch-pick">สาขา <select id="branch-select"></select></label>
+    <button id="sync-chip" class="chip" title="กดเพื่อส่งข้อมูลตอนนี้"></button>
+    <span id="user-label" class="muted"></span>
+    <button id="btn-logout" class="ghost">ออก</button>
+  </header>
+  <nav class="tabs no-print">
+    <button data-tab="sale" class="active">บันทึกขายอะไหล่</button>
+    <button data-tab="print">พิมพ์ใบเสร็จ</button>
+    <button data-tab="estimate">ใบประเมินราคา</button>
+    <button data-tab="report">รายงานบันทึกขายอะไหล่</button>
+    <button data-tab="control">พิมพ์ใบคุม</button>
+    <button data-tab="credit">ค้างจ่าย</button>
+    <button data-tab="po">ใบสั่งซื้อ</button>
+    <button data-tab="customers">ลูกค้า</button>
+    <button data-tab="points" class="admin-only">สะสมแต้ม</button>
+    <button data-tab="admin" class="admin-only">แอดมิน</button>
+    <button data-tab="exec">สำหรับผู้บริหาร</button>
+  </nav>
+  <div id="parts-progress" class="banner hidden no-print"></div>
+
+  <!-- ขาย -->
+  <main id="tab-sale" class="tab no-print">
+    <button type="button" id="sync-banner" class="sync-banner hidden"></button>
+    <div class="sale-head card">
+      <div class="field"><span>เลขที่ <a href="#" id="sale-dev" class="dev-link" title="เปลี่ยนเลขเครื่อง"></a></span><b id="sale-no">-</b></div>
+      <label class="field">วันที่<input type="date" id="sale-date"></label>
+      <label class="field grow">ลูกค้า<input id="sale-customer" list="customer-list" placeholder="พิมพ์ชื่อ หรือรหัสลูกค้า" value="เงินสด"></label>
+      <datalist id="customer-list"></datalist>
+      <div class="order-opts" id="sale-order">
+        <span>หมายเหตุ</span>
+        <label><input type="checkbox" id="sale-deposit"> มัดจำจ่ายเงินแล้วรอของ</label>
+      </div>
+      <div class="order-opts" id="sale-pay">
+        <span>ชำระโดย</span>
+        <label><input type="radio" name="sale-pay" value="เงินสด" checked> เงินสด</label>
+        <label><input type="radio" name="sale-pay" value="โอนเงิน"> โอนเงิน</label>
+        <label class="credit"><input type="radio" name="sale-pay" value="ค้างจ่าย"> ค้างจ่าย <span class="muted small">(ต้องใช้รหัสแอดมิน)</span></label>
+        <input id="sale-payref" class="payref" placeholder="รายละเอียดการโอน เช่น ธนาคาร / เวลา / เลขอ้างอิง" disabled>
+      </div>
+    </div>
+    <div class="scan card">
+      <input id="scan-input" placeholder="ยิงบาร์โค้ด หรือพิมพ์รหัสอะไหล่ แล้วกด Enter" autocomplete="off">
+      <button id="btn-search-part">ค้นหาชื่อ (F2)</button>
+    </div>
+    <p class="err" id="scan-msg"></p>
+    <div class="card">
+      <table class="grid" id="sale-table">
+        <thead><tr><th>#</th><th>รหัสอะไหล่</th><th>ชื่ออะไหล่</th><th>รุ่น</th><th class="num">จำนวน</th><th class="num">หน่วยละ</th><th class="num">จำนวนเงิน</th><th></th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <div class="totals">
+        <div class="bahttext muted" id="sale-bahttext"></div>
+        <div class="tot-grid">
+          <span>รวม</span><b id="sale-total">0.00</b>
+          <span>ส่วนลด</span><span class="disc-pair"><input id="sale-discount" type="number" step="0.01" min="0" value="0" title="ส่วนลดเป็นบาท"><input id="sale-discount-pct" type="number" step="0.01" min="0" max="100" value="0" title="ส่วนลดเป็น %"><b>%</b></span>
+          <span>เป็นเงิน</span><b id="sale-net" class="big">0.00</b>
+        </div>
+        <p class="small muted" id="sale-disc-hint"></p>
+      </div>
+      <div class="actions">
+        <button id="btn-clear" class="ghost">ล้างหน้าจอ</button>
+        <button id="btn-save" class="">บันทึก</button>
+        <button id="btn-save-print" class="primary">บันทึกและพิมพ์ (F9)</button>
+      </div>
+    </div>
+  </main>
+
+  <!-- พิมพ์ใบเสร็จ -->
+  <main id="tab-print" class="tab hidden no-print">
+    <div class="card row">
+      <input id="print-no" placeholder="เลขที่บิล เช่น PA6900001">
+      <button id="btn-print-load">เปิดบิล</button>
+      <button id="btn-print-go" class="primary">พิมพ์</button>
+    </div>
+    <p class="err" id="print-msg"></p>
+    <div id="print-preview" class="preview"></div>
+  </main>
+
+  <!-- ใบประเมินราคาซ่อม (บันทึกแยกจากบิลขาย) -->
+  <main id="tab-estimate" class="tab hidden no-print">
+    <div class="card">
+      <div class="est-top">
+        <div class="field"><span>เลขที่ใบประเมิน</span><b id="est-no">-</b></div>
+        <span id="est-status"></span>
+        <div class="actions" style="margin:0 0 0 auto">
+          <button id="est-list-btn">ค้นหาใบเก่า</button>
+          <button id="est-new" class="ghost">ใบใหม่</button>
+        </div>
+      </div>
+      <div class="form-grid est-head">
+        <label>วันที่<input type="date" id="est-date"></label>
+        <label class="span2">ชื่อ-สกุลลูกค้า<input id="est-customer" list="customer-list" placeholder="พิมพ์ชื่อ หรือรหัสลูกค้า"></label>
+        <label>เบอร์โทร<input id="est-phone" inputmode="tel"></label>
+        <label class="span2">ที่อยู่<input id="est-address"></label>
+        <label>หมายเลขเครื่อง<input id="est-engine"></label>
+        <label>ทะเบียน<input id="est-plate"></label>
+        <label>สี<input id="est-color"></label>
+        <label>ช่าง<input id="est-mechanic"></label>
+      </div>
+    </div>
+    <div class="scan card">
+      <input id="est-scan" placeholder="ยิงบาร์โค้ด หรือพิมพ์รหัสอะไหล่ แล้วกด Enter" autocomplete="off">
+      <button id="est-search">ค้นหาชื่อ</button>
+      <button id="est-free" class="ghost" title="ค่าแรงหรือรายการที่ไม่มีรหัส">+ รายการพิเศษ</button>
+    </div>
+    <div class="card">
+      <table class="grid" id="est-table">
+        <thead><tr><th>#</th><th>รหัสอะไหล่</th><th>ชื่ออะไหล่</th><th>รุ่น</th><th class="num">จำนวน</th><th class="num">ราคา/หน่วย</th><th class="num">รวมเงิน</th><th></th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <div class="totals">
+        <label class="est-note">หมายเหตุ<input id="est-note" placeholder="เช่น นัดรับรถ / อาการที่ตรวจพบ"></label>
+        <div class="tot-grid"><span>รวม</span><b id="est-total">0.00</b>
+          <span>ส่วนลด</span><span class="disc-pair"><input id="est-discount" type="number" step="0.01" min="0" value="0" title="ส่วนลดเป็นบาท"><input id="est-discount-pct" type="number" step="0.01" min="0" max="100" value="0" title="ส่วนลดเป็น %"><b>%</b></span>
+          <span>รวมราคาค่าซ่อมโดยประมาณ</span><b id="est-net" class="big">0.00</b></div>
+      </div>
+      <div class="actions">
+        <button id="est-void" class="ghost danger-text">ยกเลิกใบนี้</button>
+        <button id="est-save">บันทึก</button>
+        <button id="est-save-print" class="primary">บันทึกและพิมพ์ / PDF</button>
+      </div>
+      <div class="row est-outcome">
+        <b>ผลของใบประเมิน</b>
+        <button id="est-close" class="ghost">1. ปิดงาน (ไม่ซ่อม / ไม่ซื้อ)</button>
+        <button id="est-to-bill" class="primary alt">2. เปิดบิลขาย</button>
+        <button id="est-to-ws" class="ghost">3. ส่งขายส่ง (ดาวน์โหลด Excel)</button>
+        <button id="est-reopen" class="ghost hidden">เปิดใบนี้กลับมาแก้ไข</button>
+      </div>
+    </div>
+  </main>
+
+  <!-- รายงาน -->
+  <main id="tab-report" class="tab hidden no-print">
+    <div class="card row">
+      <label>ตั้งแต่<input type="date" id="rep-from"></label>
+      <label>ถึง<input type="date" id="rep-to"></label>
+      <label class="admin-only">สาขา<select id="rep-branch"></select></label>
+      <button id="btn-rep-load" class="primary">แสดง</button>
+      <button id="btn-rep-excel">ดาวน์โหลด Excel</button>
+      <button id="btn-rep-control" class="alt">ดูใบคุมบิลรายวัน</button>
+    </div>
+    <p class="muted" id="rep-msg"></p>
+    <div class="card" id="rep-summary"></div>
+    <div class="seg row" id="rep-filter">
+      <button type="button" data-f="all" class="active">ทั้งหมด</button>
+      <button type="button" data-f="void">รายการยกเลิก</button>
+      <button type="button" data-f="ret">รายการคืนอะไหล่</button>
+      <button type="button" data-f="credit">ค้างจ่าย</button>
+      <span class="muted small" id="rep-filter-count"></span>
+    </div>
+    <div class="card scroll-x">
+      <table class="grid small" id="rep-table">
+        <thead><tr><th>ใบเสร็จเลขที่</th><th>วันที่</th><th>รหัสอะไหล่</th><th>ชื่ออะไหล่</th><th>รุ่น</th><th class="num">จำนวน</th><th class="num">หน่วยละ</th><th class="num">จำนวนเงิน</th><th>ชื่อผู้ซื้อ</th><th class="num">รวมเงิน</th><th class="num">ส่วนลด</th><th class="num">เหลือ</th><th>สถานะ</th><th>หมายเหตุ</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <!-- สะสมแต้ม: ไฟล์อัปโหลดเข้าแอปสะสมแต้ม (แอดมิน) -->
+  </main>
+
+  <!-- ใบคุมบิลรายวัน -->
+  <main id="tab-control" class="tab hidden no-print">
+    <div class="card row">
+      <label>วันที่<input type="date" id="ctl-date"></label>
+      <label class="admin-only">สาขา<select id="ctl-branch"></select></label>
+      <button id="btn-ctl-load">แสดง</button>
+      <button id="btn-ctl-print" class="primary">พิมพ์ใบคุม</button>
+    </div>
+    <p class="muted" id="ctl-msg"></p>
+    <div id="ctl-preview" class="preview"></div>
+  </main>
+
+  <!-- บิลค้างจ่ายที่ยังไม่ได้รับเงิน ทุกวันที่ ใช้หาบิลตอนลูกค้ามาชำระ -->
+  <main id="tab-credit" class="tab hidden no-print">
+    <div class="card row">
+      <label class="grow">ค้นหา<input type="search" id="cr-q" placeholder="ชื่อลูกค้า เบอร์โทร หรือเลขบิล" autocomplete="off"></label>
+      <label class="admin-only">สาขา<select id="cr-branch"></select></label>
+      <button id="btn-cr-load">โหลดใหม่</button>
+    </div>
+    <p class="muted" id="cr-msg"></p>
+    <div id="cr-list"></div>
+  </main>
+
+  <!-- ใบสั่งซื้ออะไหล่จากร้านอื่น (ข้อมูลแยกจากอะไหล่ที่ขาย) -->
+  <main id="tab-po" class="tab hidden no-print">
+    <div class="card">
+      <div class="po-form-head">
+        <div class="field"><span>เลขที่</span><b id="po-no">ใบใหม่</b></div>
+        <label class="field">วันที่<input type="date" id="po-date"></label>
+        <label class="field grow">ร้านที่สั่งซื้อ<input id="po-supplier" list="po-sup-list" placeholder="เลือกจากรายชื่อ หรือพิมพ์ชื่อร้านใหม่"></label>
+        <button type="button" id="btn-po-addsup" class="po-addsup">+ เพิ่มร้าน</button>
+        <datalist id="po-sup-list"></datalist>
+        <label class="field">เบอร์โทรร้าน<input id="po-phone"></label>
+      </div>
+      <div class="row po-term" id="po-term">
+        <b>การชำระเงิน</b>
+        <label><input type="radio" name="po-term" value="เครดิต" checked> เครดิต (รวมจ่ายสิ้นเดือน)</label>
+        <label><input type="radio" name="po-term" value="ชำระเลย"> ชำระเลย (เบิกเงินจ่ายทันที)</label>
+        <label class="grow">หมายเหตุ<input id="po-note" class="grow"></label>
+      </div>
+      <table class="grid po-lines" id="po-lines">
+        <thead><tr><th style="width:40px">#</th><th>รายการ</th><th style="width:90px" class="num">จำนวน</th><th style="width:120px" class="num">ราคาต่อหน่วย</th><th style="width:120px" class="num">จำนวนเงิน</th><th style="width:40px"></th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <datalist id="po-item-list"></datalist>
+      <div class="row po-foot">
+        <button type="button" id="btn-po-line">+ เพิ่มบรรทัด</button>
+        <span class="grow"></span>
+        <span>รวมเป็นเงิน <b id="po-total">0.00</b> บาท</span>
+      </div>
+      <div class="row po-actions">
+        <button type="button" id="btn-po-new">ล้างหน้าจอ / ใบใหม่</button>
+        <span class="grow"></span>
+        <button type="button" id="btn-po-save">บันทึก</button>
+        <button type="button" id="btn-po-save-print" class="primary">บันทึกและพิมพ์</button>
+      </div>
+    </div>
+    <div class="card row">
+      <label>เดือน<input type="month" id="po-month"></label>
+      <label class="admin-only">สาขา<select id="po-branch"></select></label>
+      <label>แสดง<select id="po-filter"><option value="">ทุกใบในเดือน</option><option value="unpaid">ยังไม่ชำระ</option></select></label>
+      <button type="button" id="btn-po-load">แสดง</button>
+      <span class="grow"></span>
+      <button type="button" id="btn-po-summary" class="primary">ใบสรุปเบิกเงินสิ้นเดือน</button>
+      <button type="button" id="btn-po-excel">ดาวน์โหลด Excel</button>
+      <button type="button" id="btn-po-suppliers">รายชื่อร้าน</button>
+    </div>
+    <p class="muted" id="po-msg"></p>
+    <div class="card scroll-x">
+      <table class="grid small" id="po-table">
+        <thead><tr><th>เลขที่</th><th>วันที่</th><th>ร้าน</th><th>การชำระ</th><th class="num">ยอดเงิน</th><th>สถานะ</th><th>ผู้ออกใบ</th><th></th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <div id="po-preview" class="preview hidden"></div>
+  </main>
+
+  <!-- สะสมแต้มลูกค้า (แอดมิน) -->
+  <main id="tab-points" class="tab hidden no-print">
+    <div class="card">
+      <h3>นับแต้มลูกค้า</h3>
+      <p class="small muted">คิดยอดรวมบิลของลูกค้าแต่ละวัน วันไหนไม่ถึง 100 บาทไม่นับ ไม่รวมค่าแรง/ค่าบริการ (ชื่อขึ้นต้นด้วย "ค่า") และอะไหล่ที่ตั้งไว้ว่าไม่นับแต้ม หักบิลคืนแล้ว เฉพาะลูกค้าที่ติ๊กสมาชิกสะสมแต้มและมีเบอร์มือถือ · 100 บาท = 1 แต้ม คิดแยกแต่ละวัน เศษปัดทิ้ง</p>
+      <div class="row">
+        <label>สาขา<select id="pts-branch"></select></label>
+        <label>ตั้งแต่วันที่<input type="date" id="pts-from"></label>
+        <label>ถึงวันที่<input type="date" id="pts-to"></label>
+        <label>ลูกค้า<select id="pts-cus"><option value="">ลูกค้าสมาชิกทั้งหมด</option></select></label>
+        <button id="btn-pts-load" class="primary" type="button">ดูรายการ</button>
+      </div>
+      <div class="row">
+        <button id="btn-pts-excel" type="button">⬇ ไฟล์สำหรับใส่แอพ</button>
+        <button id="btn-pts-export" type="button">⬇ ข้อมูลexport</button>
+      </div>
+      <p class="muted" id="pts-msg"></p>
+    </div>
+    <div class="card">
+      <h3>รวมแต้มตามลูกค้า</h3>
+      <div class="scroll-x"><table class="grid small" id="pts-sum">
+        <thead><tr><th>ลูกค้า</th><th>เบอร์มือถือ</th><th class="num">จำนวนวันที่นับ</th><th class="num">ยอดนับแต้มรวม (บาท)</th><th class="num">แต้ม</th></tr></thead>
+        <tbody></tbody>
+      </table></div>
+    </div>
+    <div class="card">
+      <h3>รายวัน (ตรงกับไฟล์สำหรับใส่แอพ)</h3>
+      <div class="scroll-x"><table class="grid small" id="pts-table">
+        <thead><tr><th>วันที่ (Billing ID)</th><th>ลูกค้า</th><th>เบอร์มือถือ (Phone Number)</th><th class="num">ยอดนับแต้ม (Money Amount)</th><th class="num">แต้ม</th><th>บิล</th></tr></thead>
+        <tbody></tbody>
+      </table></div>
+      <div id="pts-notes" class="small"></div>
+    </div>
+  </main>
+
+  <!-- สำหรับผู้บริหาร (ต้องใส่รหัสพิเศษ) -->
+  <main id="tab-exec" class="tab hidden no-print">
+    <form class="card ex-lock" id="ex-lock">
+      <h3>สำหรับผู้บริหาร</h3>
+      <p class="small muted">ใส่รหัสพิเศษเพื่อเปิดดู</p>
+      <div class="row"><input type="password" id="ex-code" autocomplete="off" placeholder="รหัสพิเศษ"><button class="primary" type="submit">เปิดดู</button></div>
+      <p class="warn" id="ex-lock-msg"></p>
+    </form>
+    <div id="ex-body" class="ex-wrap hidden">
+      <aside class="ex-side">
+        <div class="ex-side-title">เมนูผู้บริหาร</div>
+        <button type="button" data-view="all">📋 ทุกหัวข้อ</button>
+        <button type="button" data-view="1">🏢 เทียบสาขา</button>
+        <button type="button" data-view="2">📈 ยอดขายรายวัน</button>
+        <button type="button" data-view="3">🏷️ อะไหล่ขายดีแยกหมวด</button>
+        <button type="button" data-view="4">👥 ลูกค้าซื้อมากสุด</button>
+        <button type="button" data-view="6">⏰ บิลค้างจ่าย</button>
+        <button type="button" data-view="7">✋ ยกเลิก / คืน / แก้ไข</button>
+        <button type="button" data-view="10">⚠️ อะไหล่ที่ขายขาดทุน</button>
+        <button type="button" data-view="11">📦 ใบสั่งซื้อค้างจ่าย</button>
+        <button type="button" data-view="12">🕘 ช่วงเวลาขายดี</button>
+        <button type="button" data-view="13">📊 แนะนำสต็อก</button>
+        <div class="ex-side-title admin-only">ตั้งค่า</div>
+        <button type="button" data-view="users" class="admin-only">🔑 ผู้ใช้</button>
+        <button type="button" data-view="discounts" class="admin-only">🏪 สาขาและส่วนลด</button>
+        <button type="button" id="btn-ex-lock" class="ex-lockbtn">🔒 ล็อกหน้านี้</button>
+      </aside>
+      <section class="ex-main">
+      <div id="sub-exdash" class="sub">
+      <div class="ex-top">
+        <label>เดือน<input type="month" id="ex-month"></label>
+        <label>สาขา<select id="ex-branch"></select></label>
+        <button class="primary" type="button" id="btn-ex-load">แสดง</button>
+        <span class="muted small" id="ex-msg"></span>
+      </div>
+      <div class="ex-kpis" id="ex-kpis"></div>
+      <div class="card" data-ex="1"><h3>1. เทียบสาขา</h3><div class="scroll-x" id="ex-branches"></div></div>
+      <div class="card" data-ex="2"><h3>2. ยอดขายรายวัน</h3><div class="scroll-x" id="ex-daily"></div></div>
+      <div class="ex-grid">
+        <div class="card" data-ex="3"><h3>3. อะไหล่ขายดี แยกหมวด</h3><div class="scroll-x" id="ex-parts"></div></div>
+        <div class="card" data-ex="4"><h3>4. ลูกค้าซื้อมากสุด 20 อันดับ</h3><div class="scroll-x" id="ex-customers"></div></div>
+      </div>
+      <div class="ex-grid">
+        <div class="card" data-ex="6"><h3>6. บิลค้างจ่ายที่ยังไม่ได้เงิน</h3><div class="scroll-x" id="ex-credits"></div></div>
+        <div class="card" data-ex="7"><h3>7. ยกเลิก / คืน / แก้ไขบิล ตามพนักงาน</h3><div class="scroll-x" id="ex-audit"></div></div>
+      </div>
+      <div class="card" data-ex="10"><div class="row-between"><h3>10. อะไหล่ที่ขายขาดทุน (มีทุนในระบบ)</h3><button type="button" id="btn-ex-loss-xls">⬇ ดาวน์โหลด Excel ให้พนักงานตรวจ</button></div><div class="scroll-x" id="ex-cost"></div></div>
+      <div class="ex-grid">
+        <div class="card" data-ex="11"><h3>11. ใบสั่งซื้อที่ยังไม่ได้จ่ายร้านอื่น</h3><div class="scroll-x" id="ex-pos"></div></div>
+        <div class="card" data-ex="12"><h3>12. ช่วงเวลาและวันที่ขายดี</h3><div id="ex-time"></div></div>
+      </div>
+      <div class="card" data-ex="13"><div class="row-between"><h3>13. แนะนำสต็อก (จากยอดขายปลีก 90 วันล่าสุด)</h3><button type="button" id="btn-ex-stock-xls">⬇ ดาวน์โหลด Excel</button></div><div class="scroll-x" id="ex-stock"></div></div>
+      </div>
+      <div id="sub-users" class="sub hidden">
+        <form class="card form-grid" id="user-form" autocomplete="off">
+          <h3>เพิ่ม / แก้ไขผู้ใช้</h3>
+          <label>ชื่อผู้ใช้<input name="username" required autocapitalize="off"></label>
+          <label>ชื่อที่แสดง<input name="name" required></label>
+          <label>สิทธิ์<select name="role"><option value="staff">พนักงาน</option><option value="admin">แอดมิน</option></select></label>
+          <label>สาขา<select name="branch" id="user-branch"></select></label>
+          <label>รหัสเข้าระบบ<input name="pin" type="password" placeholder="เว้นว่างถ้าไม่เปลี่ยน"></label>
+          <label>รหัสอนุมัติ (แอดมิน)<input name="approve" type="password" placeholder="เว้นว่างถ้าไม่เปลี่ยน"></label>
+          <label class="check"><input name="active" type="checkbox" checked> ใช้งานอยู่</label>
+          <div class="actions"><button class="primary" type="submit">บันทึกผู้ใช้</button></div>
+        </form>
+        <div class="card"><table class="grid small" id="users-table">
+          <thead><tr><th>ชื่อผู้ใช้</th><th>ชื่อ</th><th>สิทธิ์</th><th>สาขา</th><th>สถานะ</th><th></th></tr></thead><tbody></tbody>
+        </table></div>
+      </div>
+      <div id="sub-discounts" class="sub hidden">
+        <form class="card" id="branch-disc-form">
+          <h3>ข้อมูลสาขาและส่วนลด</h3>
+          <p class="small muted">ส่วนลด: พนักงานพิมพ์ส่วนลดเองได้ไม่เกิน % ของสาขาตัวเอง ถ้าเกินต้องใส่รหัสอนุมัติของแอดมิน · เลขสาขา ที่อยู่ และเบอร์โทร ใช้พิมพ์หัวใบประเมินราคา</p>
+          <div class="scroll-x"><table class="grid small"><thead><tr><th>สาขา</th><th>เลขสาขา</th><th>ที่อยู่</th><th>เบอร์โทร</th><th class="num">ลดได้สูงสุด (%)</th></tr></thead><tbody id="branch-disc-body"></tbody></table></div>
+          <div class="actions"><button class="primary" type="submit">บันทึก</button></div>
+          <p id="branch-disc-msg"></p>
+        </form>
+        <div class="card">
+          <h3>อะไหล่ที่ลดไม่เหมือนปกติ</h3>
+          <p class="small muted">ตั้งได้ที่แท็บ ข้อมูลอะไหล่ ช่อง "ลดได้สูงสุด (%)" ใส่ 0 = ลดไม่ได้ เว้นว่าง = ลดตามสาขา</p>
+          <table class="grid small"><thead><tr><th>รหัส</th><th>ชื่ออะไหล่</th><th class="num">ราคา</th><th class="num">ลดได้สูงสุด</th><th></th></tr></thead><tbody id="special-parts-body"></tbody></table>
+        </div>
+      </div>
+      </section>
+    </div>
+  </main>
+
+  <!-- ลูกค้า -->
+  <main id="tab-customers" class="tab hidden no-print">
+    <div class="card row">
+      <input id="cus-search" placeholder="ค้นหาลูกค้า">
+      <button id="btn-cus-new" class="primary">เพิ่มลูกค้า</button>
+    </div>
+    <div class="card scroll-x">
+      <table class="grid small" id="cus-table">
+        <thead><tr><th>รหัส</th><th>ชื่อที่ใช้</th><th>ชื่อ-นามสกุล</th><th>เบอร์โทร</th><th>สะสมแต้ม</th><th>ที่อยู่</th><th></th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </main>
+
+  <!-- แอดมิน -->
+  <main id="tab-admin" class="tab hidden no-print">
+    <nav class="subtabs">
+      <button data-sub="audit" class="active">ประวัติแก้ไข/ลบ/คืน</button>
+      <button data-sub="parts">ข้อมูลอะไหล่</button>
+      <button data-sub="nopoint">อะไหล่ไม่นับแต้ม</button>
+    </nav>
+    <div id="sub-audit" class="sub">
+      <div class="card row"><button id="btn-audit-load" class="primary">โหลดประวัติล่าสุด</button></div>
+      <div class="card scroll-x"><table class="grid small" id="audit-table">
+        <thead><tr><th>เวลา</th><th>ผู้ทำ</th><th>สาขา</th><th>รายการ</th><th>บิล</th><th>ผู้อนุมัติ</th><th>รายละเอียด</th></tr></thead><tbody></tbody>
+      </table></div>
+    </div>
+    <div id="sub-parts" class="sub hidden">
+      <div class="card">
+        <h3>ค้นหาอะไหล่</h3>
+        <input type="search" id="pf-q" placeholder="พิมพ์รหัสหรือชื่ออะไหล่ บางส่วนก็ได้ เช่น ผ้าเบรค หรือ KFL" autocomplete="off">
+        <p class="small muted" id="pf-msg"></p>
+        <div class="scroll-x" id="pf-results"></div>
+      </div>
+      <form class="card form-grid" id="part-form">
+        <h3>เพิ่ม / แก้ไขอะไหล่ทีละรายการ <span id="pf-state"></span></h3>
+        <label>รหัสอะไหล่<input name="code" required><small class="pf-old" data-old="code"></small></label>
+        <label>ชื่ออะไหล่<input name="name" required><small class="pf-old" data-old="name"></small></label>
+        <label>รุ่น<input name="model"><small class="pf-old" data-old="model"></small></label>
+        <label>ทุนไม่รวมภาษี<input name="cost" type="number" step="0.01"><small class="pf-old" data-old="cost"></small></label>
+        <label>ราคาขายไม่รวมภาษี<input name="price_ex" type="number" step="0.01"><small class="pf-old" data-old="price_ex"></small></label>
+        <label>ราคาขายรวมภาษี<input name="price" type="number" step="0.01" required><small class="pf-old" data-old="price"></small></label>
+        <label>ลดได้สูงสุด (%)<input name="max_disc" type="number" step="0.01" min="0" max="100" placeholder="เว้นว่าง = ตามสาขา"><small class="pf-old" data-old="max_disc"></small></label>
+        <label class="check"><input name="no_point" type="checkbox"> ไม่นับแต้มสะสม<small class="pf-old" data-old="no_point"></small></label>
+        <div class="actions"><button type="button" id="pf-clear">ล้างฟอร์ม</button><button class="primary" type="submit">บันทึกอะไหล่</button></div>
+      </form>
+      <div class="card" id="pending-parts-card">
+        <h3>อะไหล่ที่พนักงานเพิ่มด่วน (รอตรวจ) <span id="pending-parts-count" class="muted small"></span></h3>
+        <p class="small muted">ติ๊กเลือกรายการ แล้วกดปุ่มด้านล่าง ถ้าต้องแก้ชื่อหรือราคาให้กด แก้ไข ทีละตัว ข้อมูลจะขึ้นในฟอร์มด้านบน ระหว่างรอตรวจ อะไหล่ตัวนี้ลดราคาไม่ได้</p>
+        <div class="row">
+          <button type="button" class="primary" id="btn-pp-approve">ยืนยันที่เลือก</button>
+          <button type="button" id="btn-pp-nopoint">ไม่นับแต้ม</button>
+          <button type="button" id="btn-pp-point">นับแต้ม</button>
+          <button type="button" class="danger" id="btn-pp-delete">ลบที่เลือก</button>
+          <span class="muted small" id="pp-selected"></span>
+        </div>
+        <div class="scroll-x"><table class="grid small"><thead><tr><th><input type="checkbox" id="pp-all" title="เลือกทั้งหมด"></th><th>รหัส</th><th>ชื่ออะไหล่</th><th>รุ่น</th><th class="num">ราคา</th><th>ผู้เพิ่ม</th><th>แต้ม</th><th></th></tr></thead><tbody id="pending-parts-body"></tbody></table></div>
+      </div>
+      <div class="card" id="hp-card">
+        <h3>นำเข้าราคาจาก PDF ฮอนด้า</h3>
+        <p class="small muted">เลือกไฟล์ PDF "รายการราคาอะไหล่" จากฮอนด้า ระบบจะแสดงตารางเทียบราคาให้ตรวจก่อน ยังไม่บันทึกจนกว่าจะกดปุ่มบันทึก (ต้องต่ออินเทอร์เน็ต)</p>
+        <input type="file" id="hp-file" accept=".pdf,application/pdf">
+        <p id="hp-msg"></p>
+        <div id="hp-result"></div>
+      </div>
+      <div class="card">
+        <h3>นำเข้าจาก Excel</h3>
+        <p class="small muted">หัวคอลัมน์: รหัสอะไหล่, ชื่ออะไหล่, รุ่น, ทุนไม่รวมภาษี, ราคาขายไม่รวมภาษี, ราคาขายรวมภาษี (รหัสที่มีอยู่แล้วจะถูกอัปเดตราคา)</p>
+        <input type="file" id="parts-file" accept=".xlsx,.xls,.xlsm,.csv">
+        <p id="parts-import-msg"></p>
+      </div>
+    </div>
+    <div id="sub-nopoint" class="sub hidden">
+      <div class="card">
+        <h3>อะไหล่ไม่นับแต้ม <span id="np-count" class="muted small"></span></h3>
+        <p class="small muted">อะไหล่ในรายการนี้ขายได้ตามปกติ แต่ยอดไม่ถูกนับแต้มสะสม เอาติ๊กออก = กลับมานับแต้ม</p>
+        <div class="row">
+          <label class="grow">เพิ่มรหัสอะไหล่ (ใส่หลายรหัสได้ คั่นด้วยช่องว่างหรือจุลภาค)<input id="np-add-code" autocapitalize="characters"></label>
+          <button type="button" id="btn-np-search">🔍 ค้นหาอะไหล่</button>
+          <button type="button" class="primary" id="btn-np-add">เพิ่มเป็นไม่นับแต้ม</button>
+        </div>
+        <div class="row"><label class="grow">ค้นในรายการ<input id="np-filter" placeholder="พิมพ์รหัส ชื่อ หรือรุ่น"></label></div>
+        <div class="scroll-x"><table class="grid small" id="np-table">
+          <thead><tr><th>ไม่นับแต้ม</th><th>รหัส</th><th>ชื่ออะไหล่</th><th>รุ่น</th><th class="num">ราคา</th></tr></thead>
+          <tbody></tbody>
+        </table></div>
+      </div>
+    </div>
+  </main>
+</section>
+
+<!-- หน้าต่างลอย -->
+<div id="modal" class="modal hidden no-print"><div class="modal-box" id="modal-box"></div></div>
+
+<!-- พื้นที่พิมพ์ -->
+<div id="print-area" class="print-only"></div>
+
+<script src="config.js"></script>
+<script src="vendor/xlsx.full.min.js" defer></script>
+<div id="busy" class="busy no-print" hidden aria-live="polite">
+  <div class="busy-card">
+    <div class="busy-buddy">
+      <svg class="busy-tire" viewBox="0 0 84 84" aria-hidden="true"><circle cx="42" cy="42" r="36" fill="none" stroke="#2f343a" stroke-width="10" stroke-dasharray="10 5"/><circle cx="42" cy="42" r="30" fill="none" stroke="#2f343a" stroke-width="3"/></svg>
+      <svg class="busy-face" viewBox="0 0 84 84" aria-hidden="true"><circle cx="42" cy="42" r="26" fill="#ffd166"/><ellipse class="busy-eye" cx="34" cy="38" rx="3" ry="4" fill="#2f343a"/><ellipse class="busy-eye" cx="50" cy="38" rx="3" ry="4" fill="#2f343a"/><circle cx="28" cy="47" r="3.5" fill="#ff8fa3" opacity=".8"/><circle cx="56" cy="47" r="3.5" fill="#ff8fa3" opacity=".8"/><path d="M35 48 Q42 55 49 48" fill="none" stroke="#2f343a" stroke-width="2.5" stroke-linecap="round"/></svg>
+    </div>
+    <div class="busy-msg">รอสักครู่นะคะ<span class="busy-dots"><i></i><i></i><i></i></span></div>
+    <div class="busy-what"></div>
+    <div class="busy-slow" hidden>อินเทอร์เน็ตช้า ระบบยังทำงานอยู่</div>
+  </div>
+</div>
+<script src="app.js?v=60"></script>
+<a id="pcHome" href="https://script.google.com/macros/s/AKfycby7Uq7LYoz3JicaF99RcyT3tfWCw4ezXVOAwMVXXYJEicwfhWnf6xDnonvpTN1dRiNb/exec" target="_top" title="กลับหน้ารวมแอปเพื่อเปลี่ยนระบบ">
+  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>หน้าหลัก
+</a>
+<style>
+#pcHome{position:fixed;left:14px;bottom:14px;z-index:99999;display:flex;align-items:center;gap:5px;
+  background:#14284b;color:#fff;font:600 13.5px/1 "IBM Plex Sans Thai",system-ui,sans-serif;text-decoration:none;
+  padding:9px 14px 9px 10px;border-radius:999px;box-shadow:0 4px 14px rgba(20,40,75,.25);opacity:.92}
+#pcHome:hover{opacity:1;background:#1d3a6e}
+@media print{#pcHome{display:none!important}}
+</style>
+</body>
+</html>
